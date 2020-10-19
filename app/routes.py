@@ -1,10 +1,6 @@
 import datetime
-import glob
 import yaml
 import json
-import math
-import os
-import random
 import re
 import time
 import urllib
@@ -13,12 +9,10 @@ from concurrent.futures import as_completed
 import bleach
 import feedparser
 import requests
-from bs4 import BeautifulSoup
 from flask import Response
 from flask import render_template, flash, redirect, url_for, request, send_from_directory, Markup
 from flask_caching import Cache
 from flask_login import login_user, logout_user, current_user, login_required
-from numerize import numerize
 from requests_futures.sessions import FuturesSession
 from werkzeug.datastructures import Headers
 from werkzeug.urls import url_parse
@@ -27,7 +21,7 @@ from youtube_search import YoutubeSearch
 
 from app import app, db
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, twitterPost, ytPost, Post, youtubeFollow, twitterFollow
+from app.models import User, ytPost, youtubeFollow
 from youtube import comments, utils, channel as ytch, search as yts
 from youtube import watch as ytwatch
 
@@ -41,25 +35,13 @@ cache.init_app(app)
 #### Config variables ####
 ##########################
 config = yaml.safe_load(open('yotter-config.yaml'))
-##########################
-#### Config variables ####
-##########################
-NITTERINSTANCE = config['nitterInstance']  # Must be https://.../
+
 YOUTUBERSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
 
 
 ##########################
 #### Global variables ####
 ##########################
-
-#########################
-#### Twitter Logic ######
-#########################
-@app.before_request
-def before_request():
-    if current_user.is_authenticated:
-        current_user.set_last_seen()
-        db.session.commit()
 
 
 @app.route('/')
@@ -70,214 +52,6 @@ def index():
     return render_template('home.html', config=config)
 
 
-@app.route('/twitter')
-@app.route('/twitter/<page>')
-@login_required
-def twitter(page=0):
-    followingList = current_user.twitter_following_list()
-    form = EmptyForm()
-    followCount = len(followingList)
-    page = int(page)
-    avatarPath = "img/avatars/1.png"
-    posts = []
-
-    nitter_feed_link = config['nitterInstance']
-    c = len(followingList)
-    for user in followingList:
-        if c != 0:
-            nitter_feed_link = nitter_feed_link+"{},".format(user.username)
-            c = c-1
-        else:
-            nitter_feed_link = nitter_feed_link+user.username
-
-    cache_file = glob.glob("app/cache/{}_*".format(current_user.username))
-    if (len(cache_file) > 0):
-        time_diff = round(time.time() - os.path.getmtime(cache_file[0]))
-    else:
-        time_diff = 999
-    # If cache file is more than 1 minute old
-    if page == 0 and time_diff > 60:
-        if cache_file:
-            for f in cache_file:
-                os.remove(f)
-        feed = getFeed(followingList)
-        cache_file = "{u}_{d}.json".format(u=current_user.username, d=time.strftime("%Y%m%d-%H%M%S"))
-        with open("app/cache/{}".format(cache_file), 'w') as fp:
-            json.dump(feed, fp)
-    # Else, refresh feed
-    else:
-        try:
-            cache_file = glob.glob("app/cache/{}*".format(current_user.username))[0]
-            with open(cache_file, 'r') as fp:
-                feed = json.load(fp)
-        except:
-            feed = getFeed(followingList)
-            cache_file = "{u}_{d}.json".format(u=current_user.username, d=time.strftime("%Y%m%d-%H%M%S"))
-            with open("app/cache/{}".format(cache_file), 'w') as fp:
-                json.dump(feed, fp)
-
-    posts.extend(feed)
-    posts.sort(key=lambda x: datetime.datetime.strptime(x['timeStamp'], '%d/%m/%Y %H:%M:%S'), reverse=True)
-
-    # Items range per page
-    page_items = page * 16
-    offset = page_items + 16
-    # Pagination logic
-    init_page = page - 3
-    if init_page < 0:
-        init_page = 0
-    total_pages = page + 5
-    max_pages = int(math.ceil(len(posts) / 10))  # Total number of pages.
-    if total_pages > max_pages:
-        total_pages = max_pages
-
-    # Posts to render
-    if posts and len(posts) > offset:
-        posts = posts[page_items:offset]
-    else:
-        posts = posts[page_items:]
-
-    if not posts:
-        profilePic = avatarPath
-    else:
-        profilePic = posts[0]['profilePic']
-    return render_template('twitter.html', title='Yotter | Twitter', posts=posts, avatar=avatarPath,
-                           profilePic=profilePic, followedCount=followCount, form=form, config=config,
-                           pages=total_pages, init_page=init_page, actual_page=page, nitter_link=nitter_feed_link)
-
-
-@app.route('/savePost/<url>', methods=['POST'])
-@login_required
-def savePost(url):
-    savedUrl = url.replace('~', '/')
-    r = requests.get(savedUrl)
-    html = BeautifulSoup(str(r.content), "lxml")
-    post = html.body.find('div', attrs={'class': 'main-tweet'})
-
-    newPost = Post()
-    newPost.url = savedUrl
-    newPost.username = post.find('a', 'username').text.replace("@", "")
-    newPost.body = post.find_all('div', attrs={'class': 'tweet-content'})[0].text.encode('latin1').decode(
-        'unicode_escape').encode('latin1').decode('utf8')
-    newPost.timestamp = post.find_all('p', attrs={'class': 'tweet-published'})[0].text.encode('latin1').decode(
-        'unicode_escape').encode('latin1').decode('utf8')
-    newPost.user_id = current_user.id
-    try:
-        db.session.add(newPost)
-        db.session.commit()
-    except:
-        flash("Post could not be saved. Either it was already saved or there was an error.")
-    return redirect(request.referrer)
-
-
-@app.route('/saved')
-@login_required
-def saved():
-    savedPosts = current_user.saved_posts().all()
-    return render_template('saved.html', title='Saved', savedPosts=savedPosts, config=config)
-
-
-@app.route('/deleteSaved/<id>', methods=['POST'])
-@login_required
-def deleteSaved(id):
-    savedPost = Post.query.filter_by(id=id).first()
-    db.session.delete(savedPost)
-    db.session.commit()
-    return redirect(url_for('saved'))
-
-
-@app.route('/follow/<username>', methods=['POST'])
-@login_required
-def follow(username):
-    form = EmptyForm()
-    if form.validate_on_submit():
-        if followTwitterAccount(username):
-            flash("{} followed!".format(username))
-    return redirect(request.referrer)
-
-
-def followTwitterAccount(username):
-    if isTwitterUser(username):
-        if not current_user.is_following_tw(username):
-            try:
-                follow = twitterFollow()
-                follow.username = username
-                follow.followers.append(current_user)
-                db.session.add(follow)
-                db.session.commit()
-                return True
-            except:
-                flash("Twitter: Couldn't follow {}. Already followed?".format(username))
-                return False
-    else:
-        flash("Something went wrong... try again")
-        return False
-
-
-@app.route('/unfollow/<username>', methods=['POST'])
-@login_required
-def unfollow(username):
-    form = EmptyForm()
-    if form.validate_on_submit():
-        if twUnfollow(username):
-            flash("{} unfollowed!".format(username))
-    return redirect(request.referrer)
-
-
-def twUnfollow(username):
-    try:
-        user = twitterFollow.query.filter_by(username=username).first()
-        db.session.delete(user)
-        db.session.commit()
-    except:
-        flash("There was an error unfollowing the user. Try again.")
-    return redirect(request.referrer)
-
-
-@app.route('/following')
-@login_required
-def following():
-    form = EmptyForm()
-    followCount = len(current_user.twitter_following_list())
-    accounts = current_user.twitter_following_list()
-    return render_template('following.html', accounts=accounts, count=followCount, form=form, config=config)
-
-
-@app.route('/search', methods=['GET', 'POST'])
-@login_required
-def search():
-    form = SearchForm()
-    if form.validate_on_submit():
-        user = form.username.data
-        results = twitterUserSearch(user)
-        if results:
-            return render_template('search.html', form=form, results=results, config=config)
-        else:
-            flash("User {} not found...".format(user))
-            return redirect(request.referrer)
-    else:
-        return render_template('search.html', form=form, config=config)
-
-
-@app.route('/u/<username>')
-@app.route('/<username>')
-@login_required
-def u(username):
-    if username == "favicon.ico":
-        return redirect(url_for('static', filename='favicons/favicon.ico'))
-    form = EmptyForm()
-    avatarPath = "img/avatars/{}.png".format(str(random.randint(1, 12)))
-    user = getTwitterUserInfo(username)
-    if not user:
-        flash("This user is not on Twitter.")
-        return redirect(request.referrer)
-
-    posts = []
-    posts.extend(getPosts(username))
-    if not posts:
-        user['profilePic'] = avatarPath
-
-    return render_template('user.html', posts=posts, user=user, form=form, config=config)
 
 
 #########################
@@ -577,13 +351,6 @@ def login():
     return render_template('login.html', title='Sign In', form=form, config=config)
 
 
-# Proxy images through server
-@app.route('/img/<url>', methods=['GET', 'POST'])
-@login_required
-def img(url):
-    pic = requests.get(url.replace("~", "/"))
-    return Response(pic, mimetype="image/png")
-
 def proxy_url(url, endpoint, config_entry):
     ext_proxy = config.get('external_proxy', None)
     if ext_proxy:
@@ -664,19 +431,12 @@ def export():
 
 
 def exportData():
-    twitterFollowing = current_user.twitter_following_list()
     youtubeFollowing = current_user.youtube_following_list()
-    data = {}
-    data['twitter'] = []
+    data = {'username': current_user.username, 'description': 'list of followed YouTube channels'}
     data['youtube'] = []
 
-    for f in twitterFollowing:
-        data['twitter'].append({
-            'username': f.username
-        })
-
     for f in youtubeFollowing:
-        data['youtube'].append({
+        data.append({
             'channelId': f.channelId
         })
 
@@ -737,8 +497,6 @@ def importYoutubeSubscriptions(file):
 def importYotterSubscriptions(file):
     filename = secure_filename(file.filename)
     data = json.load(file)
-    for acc in data['twitter']:
-        r = followTwitterAccount(acc['username'])
 
     for acc in data['youtube']:
         r = followYoutubeChannel(acc['channelId'])
@@ -802,199 +560,6 @@ def getTimeDiff(t):
         timeString = "{}d".format(diff.days)
     return timeString
 
-
-def isTwitterUser(username):
-    response = requests.get('{instance}{user}/rss'.format(instance=NITTERINSTANCE, user=username))
-    if response.status_code == 404:
-        return False
-    return True
-
-
-def twitterUserSearch(terms):
-    response = urllib.request.urlopen(
-        '{instance}search?f=users&q={user}'.format(instance=NITTERINSTANCE, user=urllib.parse.quote(terms))).read()
-    html = BeautifulSoup(str(response), "lxml")
-
-    results = []
-    if html.body.find('h2', attrs={'class': 'timeline-none'}):
-        return False
-    else:
-        html = html.body.find_all('div', attrs={'class': 'timeline-item'})
-        for item in html:
-            user = {
-                "fullName": item.find('a', attrs={'class': 'fullname'}).getText().encode('latin_1').decode(
-                    'unicode_escape').encode('latin_1').decode('utf8'),
-                "username": item.find('a', attrs={'class': 'username'}).getText().encode('latin_1').decode(
-                    'unicode_escape').encode('latin_1').decode('utf8'),
-                'avatar': "{i}{s}".format(i=NITTERINSTANCE, s=item.find('img', attrs={'class': 'avatar'})['src'][1:])
-            }
-            results.append(user)
-        return results
-
-
-def getTwitterUserInfo(username):
-    response = urllib.request.urlopen('{instance}{user}'.format(instance=NITTERINSTANCE, user=username)).read()
-    # rssFeed = feedparser.parse(response.content)
-
-    html = BeautifulSoup(str(response), "lxml")
-    if html.body.find('div', attrs={'class': 'error-panel'}):
-        return False
-    else:
-        html = html.body.find('div', attrs={'class': 'profile-card'})
-
-        if html.find('a', attrs={'class': 'profile-card-fullname'}):
-            fullName = html.find('a', attrs={'class': 'profile-card-fullname'}).getText().encode('latin1').decode(
-                'unicode_escape').encode('latin1').decode('utf8')
-        else:
-            fullName = None
-
-        if html.find('div', attrs={'class': 'profile-bio'}):
-            profileBio = html.find('div', attrs={'class': 'profile-bio'}).getText().encode('latin1').decode(
-                'unicode_escape').encode('latin1').decode('utf8')
-        else:
-            profileBio = None
-
-        user = {
-            "profileFullName": fullName,
-            "profileUsername": html.find('a', attrs={'class': 'profile-card-username'}).string.encode('latin_1').decode(
-                'unicode_escape').encode('latin_1').decode('utf8'),
-            "profileBio": profileBio,
-            "tweets": html.find_all('span', attrs={'class': 'profile-stat-num'})[0].string,
-            "following": html.find_all('span', attrs={'class': 'profile-stat-num'})[1].string,
-            "followers": numerize.numerize(
-                int(html.find_all('span', attrs={'class': 'profile-stat-num'})[2].string.replace(",", ""))),
-            "likes": html.find_all('span', attrs={'class': 'profile-stat-num'})[3].string,
-            "profilePic": "{instance}{pic}".format(instance=NITTERINSTANCE,
-                                                   pic=html.find('a', attrs={'class': 'profile-card-avatar'})['href'][
-                                                       1:])
-        }
-        return user
-
-
-def getFeed(urls):
-    feedPosts = []
-    with FuturesSession() as session:
-        futures = [session.get('{instance}{user}'.format(instance=NITTERINSTANCE, user=u.username)) for u in urls]
-        for future in as_completed(futures):
-            res = future.result().content.decode('utf-8')
-            html = BeautifulSoup(res, "html.parser")
-            userFeed = html.find_all('div', attrs={'class': 'timeline-item'})
-            if userFeed != []:
-                for post in userFeed[:-1]:
-                    date_time_str = post.find('span', attrs={'class': 'tweet-date'}).find('a')['title'].replace(",", "")
-                    time = datetime.datetime.now() - datetime.datetime.strptime(date_time_str, '%d/%m/%Y %H:%M:%S')
-                    if time.days >= 7:
-                        continue
-
-                    if post.find('div', attrs={'class': 'pinned'}):
-                        if post.find('div', attrs={'class': 'pinned'}).find('span', attrs={'icon-pin'}):
-                            continue
-
-                    newPost = {}
-                    newPost["op"] = post.find('a', attrs={'class': 'username'}).text
-                    newPost["twitterName"] = post.find('a', attrs={'class': 'fullname'}).text
-                    newPost["timeStamp"] = date_time_str
-                    newPost["date"] = post.find('span', attrs={'class': 'tweet-date'}).find('a').text
-                    newPost["content"] = Markup(post.find('div', attrs={'class': 'tweet-content'}))
-
-                    if post.find('div', attrs={'class': 'retweet-header'}):
-                        newPost["username"] = post.find('div', attrs={'class': 'retweet-header'}).find('div', attrs={
-                            'class': 'icon-container'}).text
-                        newPost["isRT"] = True
-                    else:
-                        newPost["username"] = newPost["op"]
-                        newPost["isRT"] = False
-
-                    newPost["profilePic"] = NITTERINSTANCE + \
-                                            post.find('a', attrs={'class': 'tweet-avatar'}).find('img')['src'][1:]
-                    newPost["url"] = NITTERINSTANCE + post.find('a', attrs={'class': 'tweet-link'})['href'][1:]
-                    if post.find('div', attrs={'class': 'quote'}):
-                        newPost["isReply"] = True
-                        quote = post.find('div', attrs={'class': 'quote'})
-                        if quote.find('div', attrs={'class': 'quote-text'}):
-                            newPost["replyingTweetContent"] = Markup(quote.find('div', attrs={'class': 'quote-text'}))
-
-                        if quote.find('a', attrs={'class': 'still-image'}):
-                            newPost["replyAttachedImg"] = NITTERINSTANCE + \
-                                                          quote.find('a', attrs={'class': 'still-image'})['href'][1:]
-
-                        if quote.find('div', attrs={'class': 'unavailable-quote'}):
-                            newPost["replyingUser"] = "Unavailable"
-                        else:
-                            try:
-                                newPost["replyingUser"] = quote.find('a', attrs={'class': 'username'}).text
-                            except:
-                                newPost["replyingUser"] = "Unavailable"
-                        post.find('div', attrs={'class': 'quote'}).decompose()
-
-                    if post.find('div', attrs={'class': 'attachments'}):
-                        if not post.find(class_='quote'):
-                            if post.find('div', attrs={'class': 'attachments'}).find('a',
-                                                                                     attrs={'class': 'still-image'}):
-                                newPost["attachedImg"] = NITTERINSTANCE + \
-                                                         post.find('div', attrs={'class': 'attachments'}).find('a')[
-                                                             'href'][1:]
-                    feedPosts.append(newPost)
-    return feedPosts
-
-
-def getPosts(account):
-    feedPosts = []
-
-    # Gather profile info.
-    rssFeed = urllib.request.urlopen('{instance}{user}'.format(instance=NITTERINSTANCE, user=account)).read()
-    # Gather feedPosts
-    res = rssFeed.decode('utf-8')
-    html = BeautifulSoup(res, "html.parser")
-    userFeed = html.find_all('div', attrs={'class': 'timeline-item'})
-    if userFeed != []:
-        for post in userFeed[:-1]:
-            date_time_str = post.find('span', attrs={'class': 'tweet-date'}).find('a')['title'].replace(",", "")
-
-            if post.find('div', attrs={'class': 'pinned'}):
-                if post.find('div', attrs={'class': 'pinned'}).find('span', attrs={'icon-pin'}):
-                    continue
-
-            newPost = twitterPost()
-            newPost.op = post.find('a', attrs={'class': 'username'}).text
-            newPost.twitterName = post.find('a', attrs={'class': 'fullname'}).text
-            newPost.timeStamp = datetime.datetime.strptime(date_time_str, '%d/%m/%Y %H:%M:%S')
-            newPost.date = post.find('span', attrs={'class': 'tweet-date'}).find('a').text
-            newPost.content = Markup(post.find('div', attrs={'class': 'tweet-content'}))
-
-            if post.find('div', attrs={'class': 'retweet-header'}):
-                newPost.username = post.find('div', attrs={'class': 'retweet-header'}).find('div', attrs={
-                    'class': 'icon-container'}).text
-                newPost.isRT = True
-            else:
-                newPost.username = newPost.op
-                newPost.isRT = False
-
-            newPost.profilePic = NITTERINSTANCE + post.find('a', attrs={'class': 'tweet-avatar'}).find('img')['src'][1:]
-            newPost.url = NITTERINSTANCE + post.find('a', attrs={'class': 'tweet-link'})['href'][1:]
-            if post.find('div', attrs={'class': 'quote'}):
-                newPost.isReply = True
-                quote = post.find('div', attrs={'class': 'quote'})
-                if quote.find('div', attrs={'class': 'quote-text'}):
-                    newPost.replyingTweetContent = Markup(quote.find('div', attrs={'class': 'quote-text'}))
-
-                if quote.find('a', attrs={'class': 'still-image'}):
-                    newPost.replyAttachedImg = NITTERINSTANCE + quote.find('a', attrs={'class': 'still-image'})['href'][
-                                                                1:]
-
-                try:
-                    newPost.replyingUser = quote.find('a', attrs={'class': 'username'}).text
-                except:
-                    newPost.replyingUser = "Unavailable"
-                post.find('div', attrs={'class': 'quote'}).decompose()
-
-            if post.find('div', attrs={'class': 'attachments'}):
-                if not post.find(class_='quote'):
-                    if post.find('div', attrs={'class': 'attachments'}).find('a', attrs={'class': 'still-image'}):
-                        newPost.attachedImg = NITTERINSTANCE + \
-                                              post.find('div', attrs={'class': 'attachments'}).find('a')['href'][1:]
-            feedPosts.append(newPost)
-    return feedPosts
 
 
 def getYoutubePosts(ids):
