@@ -2,7 +2,9 @@
 serverName: "yotter.xyz"
 nitterInstance: "https://nitter.net/"
 maxInstanceUsers: 100
-serverLocation: "Germany"
+
+# eg "Germany"
+serverLocation: "?"
 restrictPublicUsage: true
 
 # Deprecated
