@@ -254,7 +254,7 @@ def watch():
 
     captions = ytwatch.get_subtitle_sources(info)
     for caption in captions:
-        caption['src'] = proxy_video_source_url(caption['src'])
+        caption['src'] = proxy_image_url(caption['src'])
 
     # Markup description
     try:
