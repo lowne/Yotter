@@ -478,6 +478,10 @@ def watch():
         if v_format['audio_bitrate'] is not None and v_format['vcodec'] is None:
             v_format['audio_valid'] = True
 
+    captions = ytwatch.get_subtitle_sources(info)
+    for caption in captions:
+        caption['src'] = proxy_video_source_url(caption['src'])
+
     # Markup description
     try:
         info['description'] = Markup(bleach.linkify(info['description'].replace("\n", "<br>")))
@@ -496,7 +500,7 @@ def watch():
     else:
         info['rating'] = 50.0
     return render_template("video.html", info=info, title='{}'.format(info['title']), config=config,
-                           videocomments=videocomments, vsources=vsources)
+                           videocomments=videocomments, vsources=vsources, captions=captions)
 
 
 def markupString(string):

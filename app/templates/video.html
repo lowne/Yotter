@@ -43,6 +43,9 @@
             {% for source in vsources %}
                     <source src="{{source.src}}" type="{{source.type}}">
             {% endfor %}
+            {% for caption in captions %}
+                    <track kind="captions" src="{{caption.src}}" srclang="{{caption.srclang}}" label="{{caption.label}}">
+            {% endfor %}
             </video-js>
         </div>
     {%endif%}
