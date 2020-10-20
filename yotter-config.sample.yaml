@@ -1,11 +1,14 @@
 
-serverName: "yotter.xyz"
-nitterInstance: "https://nitter.net/"
-maxInstanceUsers: 100
+server_name: "yotter.xyz"
+
+# set to 0 to disable new registrations
+max_instance_users: 100
 
 # eg "Germany"
-serverLocation: "?"
-restrictPublicUsage: true
+server_location: "?"
+
+# Deprecated
+#restrictPublicUsage: true
 
 # Deprecated
 #nginxVideoStream: true
@@ -29,6 +32,7 @@ proxy_videos: true
 #
 #external_proxy: "https://my.nginx.instance{path}?{query}&host={netloc}"
 
+# When true, also disables user registration
 maintenance_mode: false
 show_admin_message: false
 admin_message_title: "Message from the admin"

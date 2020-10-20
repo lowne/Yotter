@@ -4,7 +4,7 @@
     <div class="ui placeholder segment">
       <div class="ui two column stackable center aligned grid">
         <div class="ui vertical divider">
-          {%if cani%}
+          {%if registrations%}
             :)
           {%else%}
             :(
@@ -14,7 +14,7 @@
           <div class="column">
             <h3 class="ui header"> Capacity </h3>
             <div class="ui icon header">
-              {%if cani%}
+              {%if registrations%}
                 <i class="green users icon"></i>
               {%else%}
                 <i class="red users icon"></i>
@@ -28,7 +28,7 @@
               Can I register?
             </div>
 
-              {%if cani%}
+              {%if registrations%}
                 <a href="/register"><div class="ui green button">
                   Yes!
                 </div></a>

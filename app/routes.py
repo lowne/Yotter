@@ -498,20 +498,19 @@ def importYotterSubscriptions(file):
         r = followYoutubeChannel(acc['channelId'])
 
 
+def registrations_allowed():
+    if config.maintenance_mode: return False
+    if config.max_instance_users == 0: return False
+    if db.session.query(User).count() >= config.max_instance_users: return False
+    return True
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    form = RegistrationForm()
     if current_user.is_authenticated:
         return redirect(url_for('index'))
 
-    REGISTRATIONS = True
-    try:
-        count = db.session.query(User).count()
-        if count >= config['maxInstanceUsers'] or config['maxInstanceUsers'] == 0:
-            REGISTRATIONS = False
-    except:
-        REGISTRATIONS = True
-
+    form = RegistrationForm()
     if form.validate_on_submit():
         if User.query.filter_by(username=form.username.data).first():
             flash("This username is taken! Try with another.")
@@ -524,20 +523,15 @@ def register():
         flash('Congratulations, you are now a registered user!')
         return redirect(url_for('login'))
 
-    return render_template('register.html', title='Register', registrations=REGISTRATIONS, form=form, config=config)
+    return render_template('register.html', title='Register', registrations=registrations_allowed(), form=form, config=config)
 
 
 @app.route('/status')
 def status():
     count = db.session.query(User).count()
-    if count >= config['maxInstanceUsers'] or config['maxInstanceUsers'] == 0:
-        filen = url_for('static', filename='img/close.png')
-        caniregister = False
-    else:
-        filen = url_for('static', filename='img/open.png')
-        caniregister = True
-
-    return render_template('status.html', title='STATUS', count=count, max=config['maxInstanceUsers'], file=filen, cani=caniregister)
+    registrations = registrations_allowed()
+    # img = url_for('static', filename='img/' + ('open' if registrations else 'close') +'.png')
+    return render_template('status.html', title='STATUS', count=count, max=max(count, config.max_instance_users), registrations=registrations)
 
 @app.route('/error/<errno>')
 def error(errno):

@@ -12,7 +12,7 @@ nginxVideoStream: true
 
 DEFAULT_CONFIG = """
 server_name: ""
-max_instance_users: 100
+max_instance_users: 0
 server_location: "?"
 proxy_images: false
 proxy_videos: false
