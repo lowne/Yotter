@@ -1,5 +1,4 @@
 import datetime
-import yaml
 import json
 import re
 import time
@@ -19,7 +18,7 @@ from werkzeug.urls import url_parse
 from werkzeug.utils import secure_filename
 from youtube_search import YoutubeSearch
 
-from app import app, db
+from app import app, db, yotterconfig
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
 from app.models import User, ytPost, youtubeFollow
 from youtube import comments, utils, channel as ytch, search as yts
@@ -34,15 +33,11 @@ cache.init_app(app)
 ##########################
 #### Config variables ####
 ##########################
-config = yaml.safe_load(open('yotter-config.yaml'))
-
-YOUTUBERSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
-
+config = yotterconfig.get_config()
 
 ##########################
 #### Global variables ####
 ##########################
-
 
 @app.route('/')
 @app.route('/index')
@@ -50,8 +45,6 @@ YOUTUBERSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
 @cache.cached(timeout=50, key_prefix='home')
 def index():
     return render_template('home.html', config=config)
-
-
 
 
 #########################
@@ -353,21 +346,22 @@ def login():
     return render_template('login.html', title='Sign In', form=form, config=config)
 
 
-def proxy_url(url, endpoint, config_entry):
-    ext_proxy = config.get('external_proxy', None)
-    if ext_proxy:
+def proxy_url(url, endpoint, proxy_cond):
+    if not proxy_cond:
+        return url
+    if config.external_proxy:
         parsed = urllib.parse.urlparse(url)._asdict()
         parsed['url'] = url
-        encoded = {key+'_encoded': urllib.parse.quote_plus(value) for (key,value) in parsed.items()}
+        encoded = {key + '_encoded': urllib.parse.quote_plus(value) for (key, value) in parsed.items()}
         joined = dict(parsed, **encoded)
-        return ext_proxy.format(**joined)
-    return url_for(endpoint,url=url) if config.get(config_entry, None) else url
+        return config.external_proxy.format(**joined)
+    return url_for(endpoint, url=url)
 
 def proxy_video_source_url(url):
-    return proxy_url(url, 'stream', 'proxy_videos')
+    return proxy_url(url, 'stream', config.proxy_videos)
 
 def proxy_image_url(url):
-    return proxy_url(url, 'ytimg', 'proxy_images').replace('hqdefault','mqdefault')
+    return proxy_url(url, 'ytimg', config.proxy_images).replace('hqdefault', 'mqdefault')
 
 @app.route('/logout')
 def logout():
