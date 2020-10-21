@@ -3,11 +3,6 @@ from app import db, login
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
-followers = db.Table('followers',
-    db.Column('follower_id', db.Integer, db.ForeignKey('user.id')),
-    db.Column('followed_id', db.Integer, db.ForeignKey('user.id'))
-)
-
 channel_association = db.Table('channel_association',
     db.Column('channel_id', db.Integer, db.ForeignKey('channel.id')),
     db.Column('user_id', db.Integer, db.ForeignKey('user.id'))
@@ -36,20 +31,9 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    def follow(self, user):
-        if not self.is_following(user):
-            self.followed.append(user)
 
-    def unfollow(self, user):
-        if self.is_following(user):
-            self.followed.remove(user)
 
-    def is_following(self, user):
-        return self.followed.filter(
-            followers.c.followed_id == user.id).count() > 0
 
-    def following_list(self):
-        return self.followed.all()
 
     # YOUTUBE
     def youtube_following_list(self):
