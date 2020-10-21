@@ -25,8 +25,8 @@
                Followers
             </div>
           </div>
-{% if restricted or current_user.is_authenticated %}
-    {% if not current_user.is_following_yt(data.channel_id) %}
+{% if current_user.is_authenticated %}
+    {% if not data.channel_id in current_user.yt_followed_channels %}
         <form action="{{ url_for('ytfollow', channelId=data.channel_id) }}" method="post">
             <button type="submit" value="Submit" class="ui red button">
                 <i class="user icon"></i>
@@ -46,7 +46,7 @@
 </div>
 
     <br>
-    <br> 
+    <br>
     {% if data['error'] != None %}
         {% include '_empty_feed.html' %}
     {% else %}

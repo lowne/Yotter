@@ -20,7 +20,7 @@ from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytPost, youtubeFollow
+from app.models import User, ytPost
 from youtube import comments, utils, channel as ytch, search as yts
 from youtube import watch as ytwatch
 
@@ -53,9 +53,9 @@ def index():
 @app.route('/youtube', methods=['GET', 'POST'])
 @login_required
 def youtube():
-    followCount = len(current_user.youtube_following_list())
+    followCount = len(current_user.yt_followed_channels)
     start_time = time.time()
-    ids = current_user.youtube_following_list()
+    ids = current_user.yt_followed_channels
     videos = getYoutubePosts(ids)
     if videos:
         videos.sort(key=lambda x: x.date, reverse=True)
@@ -68,7 +68,7 @@ def youtube():
 @login_required
 def ytfollowing():
     form = EmptyForm()
-    channelList = current_user.youtube_following_list()
+    channelList = current_user.yt_followed_channels
     channelCount = len(channelList)
 
     return render_template('ytfollowing.html', form=form, channelList=channelList, channelCount=channelCount,
@@ -109,7 +109,7 @@ def ytsearch():
             channel['thumbnail'] = proxy_image_url(channel['thumbnail'])
 
         return render_template('ytsearch.html', form=form, btform=button_form, results=results,
-                               restricted=config['restrictPublicUsage'], config=config, npage=next_page,
+                               config=config, npage=next_page,
                                ppage=prev_page)
     else:
         return render_template('ytsearch.html', form=form, results=False)
@@ -123,28 +123,16 @@ def ytfollow(channelId):
 
 
 def followYoutubeChannel(channelId):
-    try:
-        channelData = YoutubeSearch.channelInfo(channelId, False)
-        try:
-            if not current_user.is_following_yt(channelId):
-                follow = youtubeFollow()
-                follow.channelId = channelId
-                follow.channelName = channelData[0]['name']
-                follow.followers.append(current_user)
-                db.session.add(follow)
-                db.session.commit()
-                flash("{} followed!".format(channelData[0]['name']))
-                return True
-            else:
-                return False
-        except Exception as e:
-            print(e)
-            flash("Youtube: Couldn't follow {}. Already followed?".format(channelData[0]['name']))
-            return False
+    if channelId in current_user.yt_followed_channels: return False  # already followed
+    try: channelData = YoutubeSearch.channelInfo(channelId, False)
     except KeyError as ke:
         print("KeyError: {}:'{}' could not be found".format(ke, channelId))
         flash("Youtube: ChannelId '{}' is not valid".format(channelId))
         return False
+    current_user.yt_followed_channels.add(channelId)
+    db.session.commit()
+    flash("{} followed!".format(channelData[0]['name']))
+    return True
 
 
 @app.route('/ytunfollow/<channelId>', methods=['POST'])
@@ -155,19 +143,16 @@ def ytunfollow(channelId):
 
 
 def unfollowYoutubeChannel(channelId):
-    try:
-        channel = youtubeFollow.query.filter_by(channelId=channelId).first()
-        name = channel.channelName
-        db.session.delete(channel)
-        db.session.commit()
-        channel = youtubeFollow.query.filter_by(channelId=channelId).first()
-        if channel:
-            db.session.delete(channel)
-            db.session.commit()
-        flash("{} unfollowed!".format(name))
-    except:
-        flash("There was an error unfollowing the user. Try again.")
-
+    if channelId not in current_user.yt_followed_channels: return False  # already unfollowed
+    current_user.yt_followed_channels.remove(channelId)
+    db.session.commit()
+    try: channelData = YoutubeSearch.channelInfo(channelId, False)
+    except KeyError as ke:
+        print("KeyError: {}:'{}' could not be found".format(ke, channelId))
+        flash("Youtube: ChannelId '{}' is not valid".format(channelId))
+        return False
+    flash("{} followed!".format(channelData[0]['name']))
+    return True
 
 @app.route('/channel/<id>', methods=['GET'])
 @app.route('/user/<id>', methods=['GET'])
@@ -198,7 +183,7 @@ def channel(id):
         prev_page = "/channel/{q}?s={s}&p={p}".format(q=id, s=sort, p=int(page) - 1)
 
     return render_template('channel.html', form=form, btform=button_form, data=data,
-                           restricted=config['restrictPublicUsage'], config=config, next_page=next_page, prev_page=prev_page)
+                           config=config, next_page=next_page, prev_page=prev_page)
 
 
 def get_best_urls(urls):
@@ -427,13 +412,13 @@ def export():
 
 
 def exportData():
-    youtubeFollowing = current_user.youtube_following_list()
+    cids = current_user.yt_followed_channels
     data = {'username': current_user.username, 'description': 'list of followed YouTube channels'}
     data['youtube'] = []
 
-    for f in youtubeFollowing:
+    for cid in cids:
         data.append({
-            'channelId': f.channelId
+            'channelId': cid
         })
 
     try:
@@ -555,7 +540,7 @@ def getTimeDiff(t):
 def getYoutubePosts(ids):
     videos = []
     with FuturesSession() as session:
-        futures = [session.get('https://www.youtube.com/feeds/videos.xml?channel_id={id}'.format(id=id.channelId)) for
+        futures = [session.get('https://www.youtube.com/feeds/videos.xml?channel_id={id}'.format(id=id)) for
                    id in ids]
         for future in as_completed(futures):
             resp = future.result()
