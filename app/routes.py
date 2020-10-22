@@ -65,11 +65,9 @@ def youtube():
 @login_required
 def ytfollowing():
     form = EmptyForm()
-    channelList = current_user.yt_followed_channels
-    channelCount = len(channelList)
-
-    return render_template('ytfollowing.html', form=form, channelList=channelList, channelCount=channelCount,
-                           config=config)
+    channels = current_user.yt_followed_channels
+    count = len(channels)
+    return render_template('ytfollowing.html', form=form, channels=channels, count=count, config=config)
 
 
 @app.route('/ytsearch', methods=['GET', 'POST'])

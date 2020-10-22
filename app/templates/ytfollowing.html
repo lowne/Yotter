@@ -4,7 +4,7 @@
 <div style="padding: 1.3em;" class="ui one column centered grid">
     <a href="{{ url_for('ytfollowing') }}"><div class="ui red statistic">
         <div class="value">
-            {{ channelCount }}
+            {{ count }}
         </div>
         <div class="label">
             Following
@@ -12,20 +12,16 @@
     </div></a>
 </div>
 
+
 <div class="ui text container">
-    <div class="ui relaxed divided list">
-        {% for channel in channelList %}
-        <div class="item">
-            <div class="right floated content">
-                    <p>
-                        <form action="{{ url_for('ytunfollow', channelId=channel.channelId) }}" method="post">
-                            {{ form.hidden_tag() }}
-                            {{ form.submit(value='Unfollow') }}
-                        </form>
-                    </p>
-            </div>
+    <div class="ui centered cards">
+        {% for channel in channels %}
+        <div class="ui card">
+            <a class="image" href="{{url_for('channel', id=channel.cid)}}">
+                <img src="{{channel.avatar}}">
+            </a>
             <div class="content">
-                <a href="{{ url_for('channel',id=channel.channelId)}}" class="header">{{channel.channelName}}</a>
+                <a class="header" href="{{url_for('channel', id=channel.cid)}}">{{channel.name}}</a>
             </div>
         </div>
         {% endfor %}
