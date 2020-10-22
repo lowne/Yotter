@@ -4,6 +4,7 @@ from app import db, login
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
+from youtube_search import YoutubeSearch
 
 ####################################################################
 # https://github.com/sqlalchemy/sqlalchemy/wiki/UniqueObject
@@ -74,9 +75,9 @@ class User(UserMixin, db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow())
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
-    rel_yt_channels = db.relationship("ytChannel", collection_class=set, secondary=user_channel_assoc, back_populates="rel_users", lazy=True)
-    # proxy the 'cid' attribute from the 'rel_yt_channels' relationship
-    yt_followed_channels = association_proxy('rel_yt_channels', 'cid', creator=lambda cid: ytChannel(cid=cid))
+    yt_followed_channels = db.relationship("ytChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
+    # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
+    yt_followed_cids = association_proxy('yt_followed_channels', 'cid', creator=lambda cid: ytChannel(cid=cid))
 
     def __repr__(self):
         return '<User {}>'.format(self.username)
@@ -96,13 +97,6 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    # YOUTUBE
-    def yt_is_following(self, cid):
-        return cid in self.yt_followed_channels
-
-    def yt_follow_channel(self, cid):
-        self.yt_followed_channels.append(cid)
-
 
 @unique_constructor(db.session,
                     lambda cid: cid,
@@ -113,11 +107,22 @@ class ytChannel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cid = db.Column(db.String(30), index=True, unique=True)
     # channelName = db.Column(db.String(100))
-    rel_users = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="rel_yt_channels", lazy=True)
-    followers = association_proxy('rel_users', 'username', creator=lambda username: User(username=username))
+    followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
+    follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
 
-    def __repr__(self):
-        return '<ytChannel {}>'.format(self.cid)
+    @property
+    def invalid(self): return get_ytChannel_info(self.cid).get('invalid',False)
+
+    @property
+    def avatar(self): return get_ytChannel_info(self.cid)['avatar']
+
+    @property
+    def name(self): return get_ytChannel_info(self.cid)['name']
+
+    @property
+    def sub_count(self): return get_ytChannel_info(self.cid)['subCount']
+
+    def __repr__(self): return '<ytChannel {}>'.format(self.cid)
 
 
 @login.user_loader
@@ -136,3 +141,16 @@ class ytPost():
     date = 'None'
     views = 'NaN'
     id = 'isod'
+def get_ytChannel_info(cid):
+    # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
+    # it's just wrong...
+    try: return YoutubeSearch.channelInfo(cid, includeVideos=False)[0]
+    except KeyError as ke:
+        print("KeyError: {}: channel '{}' could not be found".format(ke, cid))
+        return {
+            'id': id,
+            'name': '--invalid channel id--',
+            'avatar': '',
+            'subCount': 'unavailable',
+            'invalid': True,
+        }

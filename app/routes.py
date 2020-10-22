@@ -20,7 +20,7 @@ from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytPost
+from app.models import User, ytChannel, ytPost
 from youtube import comments, utils, channel as ytch, search as yts
 from youtube import watch as ytwatch
 
@@ -118,20 +118,21 @@ def ytsearch():
 @app.route('/ytfollow/<channelId>', methods=['POST'])
 @login_required
 def ytfollow(channelId):
-    r = followYoutubeChannel(channelId)
+    followYoutubeChannel(channelId)
     return redirect(request.referrer)
 
 
 def followYoutubeChannel(channelId):
-    if channelId in current_user.yt_followed_channels: return False  # already followed
-    try: channelData = YoutubeSearch.channelInfo(channelId, False)
-    except KeyError as ke:
-        print("KeyError: {}:'{}' could not be found".format(ke, channelId))
-        flash("Youtube: ChannelId '{}' is not valid".format(channelId))
+    chan = ytChannel(cid=channelId)
+    if chan in current_user.yt_followed_channels: # already followed
+        flash(f'Already following "{chan.name}"', 'error')
         return False
-    current_user.yt_followed_channels.add(channelId)
+    if chan.invalid:
+        flash(f'Channel id "{channelId}" is not valid', 'error')
+        return False
+    current_user.yt_followed_channels.add(chan)
     db.session.commit()
-    flash("{} followed!".format(channelData[0]['name']))
+    flash(f'"{chan.name}" followed!', 'success')
     return True
 
 
@@ -143,15 +144,16 @@ def ytunfollow(channelId):
 
 
 def unfollowYoutubeChannel(channelId):
-    if channelId not in current_user.yt_followed_channels: return False  # already unfollowed
-    current_user.yt_followed_channels.remove(channelId)
-    db.session.commit()
-    try: channelData = YoutubeSearch.channelInfo(channelId, False)
-    except KeyError as ke:
-        print("KeyError: {}:'{}' could not be found".format(ke, channelId))
-        flash("Youtube: ChannelId '{}' is not valid".format(channelId))
+    chan = ytChannel(cid=channelId)
+    if chan not in current_user.yt_followed_channels:  # already unfollowed
+        flash(f'Already not following "{chan.name}"', 'error')
         return False
-    flash("{} followed!".format(channelData[0]['name']))
+    current_user.yt_followed_channels.remove(chan)
+    db.session.commit()
+    if chan.invalid:
+        flash(f'Channel id "{channelId}" is not valid', 'error')
+        return False
+    flash(f'"{chan.name}" unfollowed', 'info')
     return True
 
 @app.route('/channel/<id>', methods=['GET'])

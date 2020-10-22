@@ -26,7 +26,7 @@
             </div>
           </div>
 {% if current_user.is_authenticated %}
-    {% if not data.channel_id in current_user.yt_followed_channels %}
+    {% if not data.channel_id in current_user.yt_followed_cids %}
         <form action="{{ url_for('ytfollow', channelId=data.channel_id) }}" method="post">
             <button type="submit" value="Submit" class="ui red button">
                 <i class="user icon"></i>
