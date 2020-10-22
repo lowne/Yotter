@@ -1,6 +1,6 @@
 from functools import wraps
 from datetime import datetime
-from app import db, login
+from app import db, login, fscache
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -141,6 +141,8 @@ class ytPost():
     date = 'None'
     views = 'NaN'
     id = 'isod'
+
+@fscache.memoize()
 def get_ytChannel_info(cid):
     # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
     # it's just wrong...

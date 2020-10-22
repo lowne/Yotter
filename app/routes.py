@@ -10,7 +10,6 @@ import feedparser
 import requests
 from flask import Response
 from flask import render_template, flash, redirect, url_for, request, send_from_directory, Markup
-from flask_caching import Cache
 from flask_login import login_user, logout_user, current_user, login_required
 from requests_futures.sessions import FuturesSession
 from werkzeug.datastructures import Headers
@@ -18,7 +17,7 @@ from werkzeug.urls import url_parse
 from werkzeug.utils import secure_filename
 from youtube_search import YoutubeSearch
 
-from app import app, db, yotterconfig
+from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
 from app.models import User, ytChannel, ytPost
 from youtube import comments, utils, channel as ytch, search as yts
@@ -28,8 +27,6 @@ from youtube import watch as ytwatch
 
 #########################################
 
-cache = Cache(config={'CACHE_TYPE': 'simple'})
-cache.init_app(app)
 ##########################
 #### Config variables ####
 ##########################
