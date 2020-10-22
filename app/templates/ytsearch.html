@@ -47,12 +47,12 @@
                                 {% if not res.channelId in current_user.yt_followed_cids %}
                                     <form action="{{ url_for('ytfollow', channelId=res.channelId) }}" method="post">
                                         {{ btform.hidden_tag() }}
-                                        {{ btform.submit(value='Follow') }}
+                                        {{ btform.submit(value='Follow', icon='user plus', class_='ui positive button') }}
                                     </form>
                                 {% else %}
                                     <form action="{{ url_for('ytunfollow', channelId=res.channelId) }}" method="post">
                                         {{ btform.hidden_tag() }}
-                                        {{ btform.submit(value='Unfollow') }}
+                                        {{ btform.submit(value='Unfollow', icon='user times', class_='ui negative button') }}
                                     </form>
                                 {% endif %}
                                 </div>
