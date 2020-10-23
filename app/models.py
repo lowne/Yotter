@@ -4,7 +4,7 @@ from app import db, login, fscache
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
-from youtube_search import YoutubeSearch
+from app.youtubeng import ytVideo, ytChannel
 
 ####################################################################
 # https://github.com/sqlalchemy/sqlalchemy/wiki/UniqueObject
@@ -79,8 +79,8 @@ class User(UserMixin, db.Model):
     # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
     yt_followed_cids = association_proxy('yt_followed_channels', 'cid', creator=lambda cid: ytChannel(cid=cid))
 
-    def __repr__(self):
-        return '<User {}>'.format(self.username)
+
+    def __repr__(self): return f'<User {self.username}>'
 
     def set_last_seen(self):
         self.last_seen = datetime.utcnow()
@@ -102,57 +102,17 @@ class User(UserMixin, db.Model):
                     lambda cid: cid,
                     lambda query, cid: query.filter(ytChannel.cid == cid)
                     )
-class ytChannel(db.Model):
+class ytChannel(ytChannel, db.Model):
     __tablename__ = 'yt_channel'
     id = db.Column(db.Integer, primary_key=True)
     cid = db.Column(db.String(30), index=True, unique=True)
     # channelName = db.Column(db.String(100))
     followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
-
-    @property
-    def invalid(self): return get_ytChannel_info(self.cid).get('invalid',False)
-
-    @property
-    def avatar(self): return get_ytChannel_info(self.cid)['avatar']
-
-    @property
-    def name(self): return get_ytChannel_info(self.cid)['name']
-
-    @property
-    def sub_count(self): return get_ytChannel_info(self.cid)['subCount']
-
-    def __repr__(self): return '<ytChannel {}>'.format(self.cid)
+    def __repr__(self): return f'<ytChannel {self.cid}>'
 
 
 @login.user_loader
 def load_user(id):
     return User.query.get(int(id))
 
-
-class ytPost():
-    channelName = 'Error'
-    channelUrl = '#'
-    channelId = '@'
-    videoUrl = '#'
-    videoTitle = '#'
-    videoThumb = '#'
-    description = "LOREM IPSUM"
-    date = 'None'
-    views = 'NaN'
-    id = 'isod'
-
-@fscache.memoize()
-def get_ytChannel_info(cid):
-    # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
-    # it's just wrong...
-    try: return YoutubeSearch.channelInfo(cid, includeVideos=False)[0]
-    except KeyError as ke:
-        print("KeyError: {}: channel '{}' could not be found".format(ke, cid))
-        return {
-            'id': id,
-            'name': '--invalid channel id--',
-            'avatar': '',
-            'subCount': 'unavailable',
-            'invalid': True,
-        }

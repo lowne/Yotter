@@ -35,7 +35,8 @@ import gevent.lock
 #     this led to extremely out-of-date certificate bundles when using significantly older versions of Requests.
 #     For the sake of security we recommend upgrading certifi frequently!"
 #   (http://docs.python-requests.org/en/master/user/advanced/#ca-certificates)
-
+#   [lowne] updated url https://requests.readthedocs.io/en/latest/user/advanced/#ca-certificates
+#
 # Expecting users to remember to manually update certifi on Linux isn't reasonable in my view.
 #  On windows, this is even worse since I am distributing all dependencies. This program is not
 #  updated frequently, and using requests would lead to outdated certificates. Certificates
@@ -44,6 +45,16 @@ import gevent.lock
 
 # There is hope that this might be fixed eventually:
 #   https://github.com/kennethreitz/requests/issues/2966
+#
+# [lowne edited to add]
+# Note that the above could be solved (on (non-broken) linuxes) by:
+# import ssl
+# s = requests.Session()
+# s.verify = ssl.get_default_verify_paths().cafile
+#
+# although note https://github.com/psf/requests/issues/2966#issuecomment-614768650:
+# > No, get_default_verify_paths() is the wrong approach. Trust me, I wrote the function and most of the recent feature of Python's ssl module.
+
 
 # Until then, I will use a mix of urllib3 and urllib.
 import urllib3

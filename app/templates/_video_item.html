@@ -1,11 +1,11 @@
 <div class="ui card">
   <a class="image" href="{{url_for('watch', v=video.id, _method='GET')}}">
-    <img src="{{video.videoThumb}}">
+    <img src="{{video.thumbnail}}">
   </a>
   <div class="content">
-    <a class="header" href="{{url_for('watch', v=video.id, _method='GET')}}">{{video.videoTitle}}</a>
+    <a class="header" href="{{url_for('watch', v=video.id, _method='GET')}}">{{video.title}}</a>
     <div class="meta">
-      <a class="break-word" href="{{url_for('channel', id=video.channelId)}}">{{video.channelName}}</a>
+      <a class="break-word" href="{{url_for('channel', id=video.channelId)}}">{{video.channel_name}}</a>
     </div>
   </div>
     <div class="extra content">
@@ -29,7 +29,7 @@
         {% else %}
             <span class="right floated star">
                 <i class="clock icon"></i>
-                {{video.timeStamp}}
+                {{video.timestamp_human}}
             </span>
         {% endif %}
         <span>

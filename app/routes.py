@@ -19,9 +19,12 @@ from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytChannel, ytPost
+from app.models import User, ytChannel, ytVideo
 from youtube import comments, utils, channel as ytch, search as yts
 from youtube import watch as ytwatch
+
+from app.youtubeng import get_recent_videos
+
 
 #########################################
 
@@ -52,10 +55,8 @@ def index():
 def youtube():
     followCount = len(current_user.yt_followed_channels)
     start_time = time.time()
-    ids = current_user.yt_followed_channels
-    videos = getYoutubePosts(ids)
-    if videos:
-        videos.sort(key=lambda x: x.date, reverse=True)
+    cids = current_user.yt_followed_cids
+    videos = get_recent_videos(cids, max_days = 5, max_per_channel = 10)
     print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
     return render_template('youtube.html', title="Yotter | Youtube", videos=videos, followCount=followCount,
                            config=config)
@@ -533,56 +534,3 @@ def getTimeDiff(t):
     return timeString
 
 
-
-def getYoutubePosts(ids):
-    videos = []
-    with FuturesSession() as session:
-        futures = [session.get('https://www.youtube.com/feeds/videos.xml?channel_id={id}'.format(id=id)) for
-                   id in ids]
-        for future in as_completed(futures):
-            resp = future.result()
-            rssFeed = feedparser.parse(resp.content)
-            for vid in rssFeed.entries:
-                try:
-                    # Try to get time diff
-                    time = datetime.datetime.now() - datetime.datetime(*vid.published_parsed[:6])
-                except:
-                    # If youtube rss does not have parsed time, generate it. Else set time to 0.
-                    try:
-                        time = datetime.datetime.now() - datetime.datetime(
-                            datetime.datetime.strptime(vid.published, '%y-%m-%dT%H:%M:%S+00:00'))
-                    except:
-                        time = datetime.datetime.now() - datetime.datetime.now()
-
-                if time.days >= 6:
-                    continue
-
-                video = ytPost()
-                try:
-                    video.date = vid.published_parsed
-                except:
-                    try:
-                        video.date = datetime.datetime.strptime(vid.published, '%y-%m-%dT%H:%M:%S+00:00').timetuple()
-                    except:
-                        video.date = datetime.datetime.utcnow().timetuple()
-                try:
-                    video.timeStamp = getTimeDiff(vid.published_parsed)
-                except:
-                    if time != 0:
-                        video.timeStamp = "{} days".format(str(time.days))
-                    else:
-                        video.timeStamp = "Unknown"
-
-                video.channelName = vid.author_detail.name
-                video.channelId = vid.yt_channelid
-                video.channelUrl = vid.author_detail.href
-                video.id = vid.yt_videoid
-                video.videoTitle = vid.title
-                video.videoThumb = proxy_image_url(vid.media_thumbnail[0]['url'])
-
-                video.views = vid.media_statistics['views']
-                video.description = vid.summary_detail.value
-                video.description = re.sub(r'^https?:\/\/.*[\r\n]*', '', video.description[0:120] + "...",
-                                           flags=re.MULTILINE)
-                videos.append(video)
-    return videos
