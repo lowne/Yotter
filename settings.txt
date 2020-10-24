@@ -1,0 +1,64 @@
+# 0 - Off
+# 1 - On, except video
+# 2 - On, including video (see warnings)
+route_tor = 0
+
+tor_port = 9150
+
+port_number = 8080
+
+# This will allow others to connect to your Youtube Local instance as a website.
+# For security reasons, enabling this is not recommended.
+allow_foreign_addresses = False
+
+# 0 - off by default
+# 1 - only manually created subtitles on by default
+# 2 - enable even if automatically generated is all that's available
+subtitles_mode = 0
+
+# ISO 639 language code: https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+subtitles_language = 'en'
+
+# 0 - Related videos disabled
+# 1 - Related videos always shown
+# 2 - Related videos hidden; shown by clicking a button
+related_videos_mode = 1
+
+# 0 - Video comments disabled
+# 1 - Video comments always shown
+# 2 - Video comments hidden; shown by clicking a button
+comments_mode = 1
+
+enable_comment_avatars = True
+
+# 0 to sort by top
+# 1 to sort by newest
+default_comment_sorting = 0
+
+theater_mode = True
+
+default_resolution = 720
+
+use_video_hotkeys = True
+
+proxy_images = False
+
+use_comments_js = True
+
+use_sponsorblock_js = False
+
+theme = 0
+
+font = 1
+
+autocheck_subscriptions = 0
+
+# Developer use to debug 403s
+gather_googlevideo_domains = False
+
+# Save all responses from youtube for debugging
+debugging_save_responses = False
+
+# Do not change, remove, or comment out this value, or else your settings may be lost or corrupted
+settings_version = 3
+
