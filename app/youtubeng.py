@@ -2,7 +2,7 @@ import requests
 from requests_futures.sessions import FuturesSession
 import datetime
 from dateutil.parser import parse as dateparse
-from humanize import naturaldelta
+from humanize import naturaldelta, intword
 import functools
 import operator
 import math
@@ -110,7 +110,7 @@ def fix_ytlocal_url(url):
 @propgroups
 class ytVideo:
     __propgroups__ = {'oembed': ['title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
-                      'page': ['published', 'updated', 'duration', 'description', 'views', 'rating'],
+                      'page': ['published', 'updated', 'duration', 'description', 'views', 'rating', 'badges'],
                       'ts_human': ['timestamp_human'],
                       'NYI': ['is_live', 'is_upcoming']}
 
@@ -143,6 +143,10 @@ class ytVideo:
         # TODO 'Scheduled', 'LIVE'
         return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
 
+    @property
+    def views_human(self): return intword(self.views)
+
+
 # def timedelta_human_str(delta):
 #     if delta.days >= 7: return f"{int(delta.days/7)}w"
 #     if delta.days > 0: return f"{delta.days}d"
@@ -151,7 +155,8 @@ class ytVideo:
 
 
 YT_CHANNEL_INVALID_DATA = {'invalid': True, 'name': '--invalid channel id--', 'url': '', 'avatar': '', 'sub_count': 0, 'view_count': 0,
-                           'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': []}
+                           'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': [],
+                           'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
 
 @propgroups
@@ -160,7 +165,7 @@ class ytChannel:
     # __propgroups__ = {'from_search': ['name', 'avatar', 'sub_count', 'invalid'], 'feed': ['recent_videos'],
     #                   'about_page': ['joined', 'descrption', 'view_count', 'links'], 'NYI': ['playlists', 'all_videos']}
 
-    __propgroups__ = {'about_page': ['invalid', 'name', 'avatar', 'sub_count', 'joined', 'descrption', 'view_count', 'links'],
+    __propgroups__ = {'about_page': ['invalid', 'name', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
 
@@ -191,7 +196,8 @@ class ytChannel:
             }
         return {'name': info['name'], 'avatar': info['avatar'], 'sub_count': info['subCount'], 'invalid': info.get('invalid', False)}
 
-    @fscache.memoize(timeout=3600 * 2)
+    # @fscache.memoize(timeout=3600 * 2)
+    @fscache.memoize(timeout=3)
     def _get_feed(self):
         now = utcnow()
         videos = []
@@ -217,6 +223,7 @@ class ytChannel:
                 #                            flags=re.MULTILINE)
                 video.views = entry.media_statistics['views']
                 video.rating = int(float(entry.media_starrating['average']) / float(entry.media_starrating['max']) * 100)
+                video.badges = []
                 videos.append(video)
         # return {'published': published, 'recent_videos': videos}
         self._store_if_absent('joined', published)
@@ -233,7 +240,7 @@ class ytChannel:
         elif info['error'] is not None: raise RuntimeError(info['error'])
 
         # links is a list of tuples (text, url)
-        joined = datetime.datetime.strptime(info['date_joined'], '%Y-%m-%d')
+        joined = dateparse(info['date_joined'])
 
         # TODO check avatar url
         return {'invalid': False, 'name': info['channel_name'], 'avatar': info['avatar'],
@@ -246,6 +253,8 @@ class ytChannel:
         return {'num_videos': numvids, 'num_video_pages': math.ceil(numvids / 30)}
 
     def get_videos(self, page=1, sort=3):
+        videos = []
+        if self.invalid: return videos
         view = 1 # not sure what this this
         polymer = youtube.channel.get_channel_tab(self.cid, page, sort, 'videos', view)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'videos')
@@ -253,7 +262,6 @@ class ytChannel:
         if info['error'] is not None: raise RuntimeError(info['error'])
 
         print(json.dumps(info, indent=2))
-        videos = []
 
         for item in info['items']:
             if item['type'] == 'video':
@@ -267,6 +275,7 @@ class ytChannel:
                 video._override_ts_human() # we can never call .timestamp_human again as the video lacks a .published
                 video.views = item['view_count']
                 video.duration = item['duration'] #TODO live
+                video.badges = item['badges']
                 videos.append(video)
         return videos
 
@@ -274,6 +283,7 @@ class ytChannel:
 
     def get_recent_videos(self, max_n=999, max_days=30):
         videos = []
+        if self.invalid: return videos
         now = utcnow()
         for v in self.recent_videos:  # relies on recent_videos (and, in turn, youtube's rss feed) to be property sorted
             if (now - v.published).days > max_days: break
@@ -282,8 +292,10 @@ class ytChannel:
         return videos
 
 
-def get_channel(url):
-    cid = get_cid(url)
+def get_channel_for_urlpath(path):
+    cid = get_cid_for_urlpath(path)
+    # print(cid)
+    # raise RuntimeError('haha')
     if cid is not None: return ytChannel(cid)
     ch = ytChannel('NOTFOUND')
     for k, v in YT_CHANNEL_INVALID_DATA.items(): setattr(ch, k, v)
@@ -291,7 +303,7 @@ def get_channel(url):
 
 
 @fscache.memoize(timeout=86400 * 7)
-def get_cid(url): return youtube.channel.get_channel_id(url)
+def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL}/{path}')
 
 
 def get_recent_videos(cids, max_per_channel=99, max_days=9999):

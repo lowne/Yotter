@@ -174,41 +174,41 @@ def unfollowYoutubeChannel(channelId):
     return True
 
 
-@app.route('/channel/<id>', methods=['GET'])
-@app.route('/user/<id>', methods=['GET'])
 @app.route('/c/<id>', methods=['GET'])
 @login_required
+def channel_custom(id):
+    return _channel_page(request, get_channel_for_urlpath(request.path))
+
+
+@app.route('/user/<id>', methods=['GET'])
+@login_required
+def channel_username(id):
+    return _channel_page(request, get_channel_for_urlpath(request.path))
+
+
+@app.route('/channel/<id>', methods=['GET'])
+@login_required
 def channel(id):
+    return _channel_page(request, ytChannel(id))
+
+
+def _channel_page(request, ch):
     form = ChannelForm()
     button_form = EmptyForm()
 
-    page = request.args.get('p', None)
-    sort = request.args.get('s', None)
-    if page is None:
-        page = 1
-    if sort is None:
-        sort = 3
-    # ch = ytChannel(id)
-    # videos = ch.get_videos(page=page, sort=sort)
+    page = request.args.get('page', None) or 1
+    sort = request.args.get('sort', None) or 3
 
-    jsn = ytch.get_channel_tab(id, page, sort)
-    data = yt_data_extract.extract_channel_info(json.loads(jsn), 'videos')
-    if data['error'] is not None:
-        return False
-    post_process_channel_info(data)
+    videos = ch.get_videos(page=page, sort=sort)
 
-    for video in data['items']:
-        video['thumbnail'] = proxy_image_url(video['thumbnail'])
+    next_page, prev_page = None, None
+    if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
+    if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
+    print(ch.num_video_pages)
+    print(next_page)
+    print(prev_page)
 
-    data['avatar'] = proxy_image_url(data['avatar'])
-
-    next_page = "/channel/{q}?s={s}&p={p}".format(q=id, s=sort, p=int(page) + 1)
-    if int(page) == 1:
-        prev_page = "/channel/{q}?s={s}&p={p}".format(q=id, s=sort, p=1)
-    else:
-        prev_page = "/channel/{q}?s={s}&p={p}".format(q=id, s=sort, p=int(page) - 1)
-
-    return render_template('channel.html', form=form, btform=button_form, data=data,
+    return render_template('channel.html', form=form, btform=button_form, channel=ch, videos=videos,
                            config=config, next_page=next_page, prev_page=prev_page)
 
 

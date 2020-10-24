@@ -1,38 +1,33 @@
 <div class="ui card">
-  <a class="image" href="{{url_for('watch', v=video.id, _method='GET')}}">
-    <img src="{{video.thumbnail}}">
-  </a>
-  <div class="content">
-    <a class="header" href="{{url_for('watch', v=video.id, _method='GET')}}">{{video.title}}</a>
-    <div class="meta">
-      <a class="break-word" href="{{url_for('channel', id=video.channelId)}}">{{video.channel_name}}</a>
-    </div>
-  </div>
-    <div class="extra content">
-        {% if video.isLive == "Livestream" or video.isLive %}
-            <span class="left floated like">
-                <i class="red circle icon"></i>
-                {{video.views}}
-            </span>
-        {% else %}
-            <span class="left floated like">
-                <i class="eye icon"></i>
-                {{video.views}}
-            </span>
-        {% endif %}
+    <a class="image" href="{{url_for('watch', v=video.id, _method='GET')}}">
+        <img src="{{video.thumbnail}}">
+    </a>
+    <div class="content">
+        <a class="header" href="{{url_for('watch', v=video.id, _method='GET')}}">{{video.title}}</a>
+        <div class="meta">
+          <span class="right floated star">
+              <i class="clock icon"></i>
+              {{video.duration}}
+          </span>
+          <a class="break-word" href="{{url_for('channel', id=video.channel_id)}}">{{channel.name}}</a>
+        </div>
+      </div>
+      <div class="extra content">
+        <span class="left floated like">
+            <i class="eye icon"></i>
+            {{video.views_human}}
+        </span>
 
-        {% if video.timeStamp == "Scheduled" or video.isUpcoming %}
+        {%if video.duration == "PREMIERING NOW" or video.duration == "LIVE"%}
             <span class="right floated star">
-                <i class="blue clock icon"></i>
-                {{video.timeStamp}}
+                <i class="red circle icon"></i>
+                LIVE
             </span>
-        {% else %}
+        {%else%}
             <span class="right floated star">
-                <i class="clock icon"></i>
+                <i class="calendar icon"></i>
                 {{video.timestamp_human}}
             </span>
         {% endif %}
-        <span>
-        </span>
     </div>
 </div>

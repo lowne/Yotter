@@ -5,90 +5,62 @@
 <div class="ui center aligned text container">
     <div class="ui centered vertical segment">
         <h2 class="ui header">
-          <img src="{{data.avatar}}" class="ui circular image">
-          {{data.channel_name}}
+          <img src="{{channel.avatar}}" class="ui circular image">
+          {{channel.name}}
         </h2>
     </div>
     <div class="ui vertical segment">
-        <p>{{data.short_description}}</p>
+        <p>{{channel.description}}</p>
     </div>
     <div class="ui vertical segment">
           <div class="ui tiny statistic">
             <div class="value">
-                {%if data.approx_suscriber_count == None%}
-                    <i class="user icon"></i> ?
-                {%else%}
-                    <i class="user icon"></i> {{data.approx_subscriber_count}}
-                {%endif%}
+                <i class="user icon"></i> {{channel.sub_count}}
             </div>
             <div class="label">
                Followers
             </div>
           </div>
-{% if current_user.is_authenticated %}
-    {% if not data.channel_id in current_user.yt_followed_cids %}
-        <form action="{{ url_for('ytfollow', channelId=data.channel_id) }}" method="post">
+{% if not channel.invalid and current_user.is_authenticated %}
+    {% if not channel.id in current_user.yt_followed_cids %}
+        <form action="{{ url_for('ytfollow', channelId=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red button">
                 <i class="user icon"></i>
                 Suscribe
             </button>
         </form>
     {% else %}
-        <form action="{{ url_for('ytunfollow', channelId=data.channel_id) }}" method="post">
+        <form action="{{ url_for('ytunfollow', channelId=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red active button">
                 <i class="user icon"></i>
                 Unsuscribe
             </button>
         </form>
-    {%endif%}
-{%endif%}
+    {% endif %}
+{% endif %}
     </div>
 </div>
 
     <br>
     <br>
-    {% if data['error'] != None %}
+    {% if videos|length == 0 %}
         {% include '_empty_feed.html' %}
     {% else %}
     <div class="ui centered cards">
-        {% for video in data['items'] %}
-            <div class="ui card">
-              <a class="image" href="{{url_for('watch', v=video.id, _method='GET')}}">
-                <img src="{{video.thumbnail}}">
-              </a>
-              <div class="content">
-                <a class="header" href="{{url_for('watch', v=video.id, _method='GET')}}">{{video.title}}</a>
-                <div class="meta">
-                  <a class="break-word" href="{{url_for('channel', id=video.channel_id)}}">{{data.channel_name}}</a>
-                </div>
-              </div>
-                <div class="extra content">
-                    <span class="left floated like">
-                        <i class="eye icon"></i>
-                        {{video.approx_view_count}}
-                    </span>
-
-                    {%if video.duration == "PREMIERING NOW" or video.duration == "LIVE"%}
-                        <span class="right floated star">
-                            <i class="red circle icon"></i>
-                            LIVE
-                        </span>
-                    {%else%}
-                        <span class="right floated star">
-                            <i class="clock icon"></i>
-                            {{video.time_published}}
-                        </span>
-                    {%endif%}
-                </div>
-            </div>
+        {% for video in videos %}
+            {% include '_video_item.html' %}
         {% endfor %}
     </div>
     {% endif %}
 
     <br>
     <div class="ui center aligned text container">
+        {% if prev_page %}
         <a href="{{prev_page}}"> <button class="ui left attached button"><i class="angle red left icon"></i></button> </a>
+        {% endif %}
+        {% if next_page %}
         <a href="{{next_page}}"> <button class="right attached ui button"><i class="angle red right icon"></i></button></a>
+        {% endif %}
     </div>
     <br>
 {% endblock %}
