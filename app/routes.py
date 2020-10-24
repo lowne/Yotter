@@ -20,8 +20,10 @@ from youtube_search import YoutubeSearch
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
 from app.models import User, ytChannel, ytVideo
-from youtube import comments, utils, channel as ytch, search as yts
+from youtube import comments, channel as ytch, search as yts
 from youtube import watch as ytwatch
+from youtube import yt_data_extract
+from youtube.channel import post_process_channel_info
 
 from app.youtubeng import get_recent_videos
 
@@ -167,7 +169,11 @@ def channel(id):
     if sort is None:
         sort = 3
 
-    data = ytch.get_channel_tab_info(id, page, sort)
+    jsn = ytch.get_channel_tab(id, page, sort)
+    data = yt_data_extract.extract_channel_info(json.loads(jsn), 'videos')
+    if data['error'] is not None:
+        return False
+    post_process_channel_info(data)
 
     for video in data['items']:
         video['thumbnail'] = proxy_image_url(video['thumbnail'])
@@ -240,7 +246,7 @@ def watch():
 
     # Get comments
     videocomments = comments.video_comments(id, sort=0, offset=0, lc='', secret_key='')
-    videocomments = utils.post_process_comments_info(videocomments)
+    # videocomments = utils.post_process_comments_info(videocomments)
     if videocomments is not None:
         videocomments.sort(key=lambda x: x['likes'], reverse=True)
         for cmnt in videocomments:

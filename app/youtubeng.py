@@ -7,8 +7,15 @@ import json
 import feedparser
 from app import fscache
 from youtube_search import YoutubeSearch
+
+import sys
+import os
+__ytl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),'youtube-local')
+sys.path.append(__ytl_dir)
 import youtube
 
+def utcnow():
+    return datetime.datetime.now(datetime.timezone.utc)
 # class decorator
 def propgroups(cl):
     cl.__propnames__ = [prop for props in cl.__propgroups__.values() for prop in props]
@@ -79,7 +86,7 @@ class ytVideo:
     @property
     def timestamp_human(self):
         # TODO 'Scheduled', 'LIVE'
-        return timedelta_human_str(datetime.datetime.now() - self.published)
+        return timedelta_human_str(utcnow() - self.published)
 
 
 # rick=ytVideo('7ZjBiDVoTTE')
@@ -185,7 +192,7 @@ class ytChannel:
 
     @fscache.memoize(timeout=3600*2)
     def _get_feed(self):
-        now = datetime.datetime.now()
+        now = utcnow()
         with FuturesSession() as session:
             resp = session.get(f"https://www.youtube.com/feeds/videos.xml?channel_id={self.cid}").result()
             rssFeed = feedparser.parse(resp.content)
@@ -218,7 +225,7 @@ class ytChannel:
 
     def get_recent_videos(self, max_n=999, max_days=7):
         videos = []
-        now = datetime.datetime.now()
+        now = utcnow()
         for v in self.recent_videos:  # relies on recent_videos (and, in turn, youtube's rss feed) to be property sorted
             if (now - v.published).days > max_days: break
             if len(videos) >= max_n: break
