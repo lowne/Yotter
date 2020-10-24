@@ -58,7 +58,7 @@ def youtube():
     followCount = len(current_user.yt_followed_channels)
     start_time = time.time()
     cids = current_user.yt_followed_cids
-    videos = get_recent_videos(cids, max_days = 5, max_per_channel = 10)
+    videos = get_recent_videos(cids, max_days = 30, max_per_channel = 10)
     print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
     return render_template('youtube.html', title="Yotter | Youtube", videos=videos, followCount=followCount,
                            config=config)
@@ -154,6 +154,7 @@ def unfollowYoutubeChannel(channelId):
     flash(f'"{chan.name}" unfollowed', 'info')
     return True
 
+
 @app.route('/channel/<id>', methods=['GET'])
 @app.route('/user/<id>', methods=['GET'])
 @app.route('/c/<id>', methods=['GET'])
@@ -168,6 +169,8 @@ def channel(id):
         page = 1
     if sort is None:
         sort = 3
+    # ch = ytChannel(id)
+    # videos = ch.get_videos(page=page, sort=sort)
 
     jsn = ytch.get_channel_tab(id, page, sort)
     data = yt_data_extract.extract_channel_info(json.loads(jsn), 'videos')
