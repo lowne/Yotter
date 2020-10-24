@@ -25,7 +25,9 @@ from youtube import watch as ytwatch
 from youtube import yt_data_extract
 from youtube.channel import post_process_channel_info
 
-from app.youtubeng import get_recent_videos
+from app.youtubeng import get_recent_videos, proxy_url_mappers, get_channel_for_urlpath
+
+
 
 
 #########################################
@@ -36,6 +38,23 @@ from app.youtubeng import get_recent_videos
 #### Config variables ####
 ##########################
 config = yotterconfig.get_config()
+def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
+
+
+if config.external_proxy:
+    def ext_proxy_mapper(url):
+        parsed = urllib.parse.urlparse(url)._asdict()
+        parsed['url'] = url
+        encoded = {key + '_encoded': urllib.parse.quote_plus(value) for (key, value) in parsed.items()}
+        joined = dict(parsed, **encoded)
+        return config.external_proxy.format(**joined)
+    if config.proxy_images: proxy_url_mappers['proxy_image'] = lambda url: ext_proxy_mapper(_fix_thumbnail_hq(url))
+    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = ext_proxy_mapper
+else:
+    if config.proxy_images: proxy_url_mappers['proxy_image'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
+    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = lambda url: url_for('stream', url=url)
+
+
 
 ##########################
 #### Global variables ####
@@ -304,6 +323,7 @@ def download_file(streamable):
             yield chunk
 
 # Proxy yt images through server
+@fscache.memoize(timeout=3600)
 @app.route('/ytimg/<path:url>')
 @login_required
 def ytimg(url):
@@ -337,23 +357,6 @@ def login():
         return redirect(next_page)
     return render_template('login.html', title='Sign In', form=form, config=config)
 
-
-def proxy_url(url, endpoint, proxy_cond):
-    if not proxy_cond:
-        return url
-    if config.external_proxy:
-        parsed = urllib.parse.urlparse(url)._asdict()
-        parsed['url'] = url
-        encoded = {key + '_encoded': urllib.parse.quote_plus(value) for (key, value) in parsed.items()}
-        joined = dict(parsed, **encoded)
-        return config.external_proxy.format(**joined)
-    return url_for(endpoint, url=url)
-
-def proxy_video_source_url(url):
-    return proxy_url(url, 'stream', config.proxy_videos)
-
-def proxy_image_url(url):
-    return proxy_url(url, 'ytimg', config.proxy_images).replace('hqdefault', 'mqdefault')
 
 @app.route('/logout')
 def logout():

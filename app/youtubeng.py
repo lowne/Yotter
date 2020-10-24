@@ -24,11 +24,16 @@ def utcnow():
 
 ATTRFLAG = dict()
 
+proxy_url_mappers = {
+  'proxy_image': lambda u: u,
+  'proxy_stream': lambda u: u,
+}
+
 # class decorator
 def propgroups(cl):
     propnames = [prop for props in cl.__propgroups__.values() for prop in props]
     cl.__propnames__ = propnames
-
+    if not getattr(cl, '__proxyprops__'): cl.__proxyprops__ = {}
     cl_init = cl.__init__
 
     @functools.wraps(cl_init)
@@ -81,6 +86,12 @@ def propgroups(cl):
                 setattr(self, f'_{prop}', v)
                 getattr(self, f'_set_{grp}')()
 
+            proxy_key = cl.__proxyprops__.get(prop, None)
+            if proxy_key:
+                def pset(self, v, grp=grp, prop=prop, proxy_key=proxy_key):
+                    setattr(self, f'_{prop}', proxy_url_mappers[proxy_key](v))
+                    getattr(self, f'_set_{grp}')()
+
             def pdel(self, grp=grp, prop=prop):  # invalidate the cache and rebuild on next access
                 delattr(self, prop)
                 getattr(self, f'_del_{grp}')()
@@ -102,6 +113,8 @@ class ytVideo:
                       'page': ['published', 'updated', 'duration', 'description', 'views', 'rating'],
                       'ts_human': ['timestamp_human'],
                       'NYI': ['is_live', 'is_upcoming']}
+
+    __proxyprops__ = {'thumbnail': 'proxy_image'}
 
     def __repr__(self): return f"<ytVideo {self.id}>"
     # def __hash__(self): return hash(self.id)
@@ -150,6 +163,8 @@ class ytChannel:
     __propgroups__ = {'about_page': ['invalid', 'name', 'avatar', 'sub_count', 'joined', 'descrption', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
+
+    __proxyprops__ = {'avatar': 'proxy_image'}
 
     def __repr__(self): return f"<ytChannel {self.cid}>"
     # def __hash__(self): return hash(repr(self))
