@@ -275,7 +275,7 @@ class ytChannel:
     # __propgroups__ = {'from_search': ['name', 'avatar', 'sub_count', 'invalid'], 'feed': ['recent_videos'],
     #                   'about_page': ['joined', 'descrption', 'view_count', 'links'], 'NYI': ['playlists', 'all_videos']}
 
-    __propgroups__ = {'about_page': ['invalid', 'name', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
+    __propgroups__ = {'about_page': ['invalid', 'name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
 
@@ -288,16 +288,13 @@ class ytChannel:
     def __repr__(self): return f"<ytChannel {self.cid}>"
     # def __hash__(self): return hash(repr(self))
 
-    def __init__(self, cid, user=None, custom=None):
+    def __init__(self, cid):
         self.cid = cid
-        if user: self.url = f'{BASE_URL}/user/{user}'
-        elif custom: self.url = f'{BASE_URL}/c/{custom}'
-        else: self.url = f'{BASE_URL}/channel/{cid}'
+        self.url = f'{BASE_URL}/channel/{cid}'
 
     @fscache.memoize(timeout=86400 * 7)
     def _get_from_search(self):
         # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
-        # it's just wrong...
         try: info = YoutubeSearch.channelInfo(self.cid, includeVideos=False)[0]
         except KeyError as ke:
             print("KeyError: {}: channel '{}' could not be found".format(ke, self.cid))
@@ -356,8 +353,7 @@ class ytChannel:
         # links is a list of tuples (text, url)
         joined = dateparse(info['date_joined'])
 
-        # TODO check avatar url
-        return {'invalid': False, 'name': info['channel_name'], 'avatar': info['avatar'],
+        return {'invalid': False, 'name': info['channel_name'], 'url': info['channel_url'], 'avatar': info['avatar'],
                 'sub_count': info['approx_subscriber_count'], 'joined': joined,
                 'description': info['description'], 'view_count': info['view_count'], 'links': info['links']}
 
