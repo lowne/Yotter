@@ -4,7 +4,8 @@ import re
 import time
 import urllib
 from concurrent.futures import as_completed
-
+from functools import wraps
+from operator import attrgetter
 import bleach
 
 import requests
@@ -30,8 +31,8 @@ from youtube.channel import post_process_channel_info
 #         Config         #
 ##########################
 config = yotterconfig.get_config()
-def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
 
+def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
 
 if config.external_proxy:
     def ext_proxy_mapper(url):
@@ -47,6 +48,12 @@ else:
     if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
 
 
+def check_login(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if config.require_login and not current_user.is_authenticated: return app.login_manager.unauthorized()
+        return f(*args, **kwargs)
+    return decorated
 
 
 ##########################
@@ -55,10 +62,10 @@ else:
 
 @app.route('/')
 @app.route('/index')
-@login_required
-@cache.cached(timeout=50, key_prefix='home')
 def index():
-    return render_template('home.html', config=config)
+    if current_user.is_authenticated: return redirect(url_for('ytfeed'))
+    if config.require_login: return app.login_manager.unauthorized()
+    return redirect(url_for('ytsearch'))
 
 
 @app.route('/feed', methods=['GET', 'POST'])
@@ -81,7 +88,7 @@ def ytsubscriptions():
 
 
 @app.route('/search', methods=['GET', 'POST'])
-@login_required
+@check_login
 def ytsearch():
     form = ChannelForm()
     button_form = EmptyForm()
@@ -207,12 +214,12 @@ def get_live_urls(urls):
 
 
 @app.route('/v/<id>', methods=['GET'])
-@login_required
+@check_login
 def ytvideo(id):
     return _video_page(request, ytVideo(id))
 
 @app.route('/watch', methods=['GET'])
-@login_required
+@check_login
 def watch():
     vid = request.args.get('v', None)
     if not vid: return redirect(url_for('error/405'))
@@ -237,7 +244,7 @@ def markupString(string):
 
 ## PROXY videos through Yotter server to the client.
 @app.route('/stream/<path:url>', methods=['GET', 'POST'])
-@login_required
+@check_login
 def ytstream(url):
     # This function proxies the video stream from GoogleVideo to the client.
     headers = Headers()
@@ -268,7 +275,7 @@ def download_file(streamable):
 # Proxy yt images through server
 @fscache.memoize(timeout=3600)
 @app.route('/ytimg/<path:url>')
-@login_required
+@check_login
 def ytimg(url):
     pic = requests.get(url, stream=True)
     response = Response(pic, mimetype=pic.headers['Content-Type'], direct_passthrough=True)
@@ -290,7 +297,7 @@ def login():
         if user is None or not user.check_password(form.password.data):
             flash('Invalid username or password')
             return redirect(url_for('login'))
-        if user.username == config['admin_user']:
+        if user.username == config.admin_user:
             user.set_admin_user()
             db.session.commit()
         login_user(user, remember=form.remember_me.data)
@@ -302,6 +309,7 @@ def login():
 
 
 @app.route('/logout')
+@login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))

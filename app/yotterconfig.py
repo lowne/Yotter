@@ -10,29 +10,29 @@ restrictPublicUsage: true
 nginxVideoStream: true
 """
 
-DEFAULT_CONFIG = """
-server_name: ""
-max_instance_users: 0
-server_location: "?"
-proxy_images: false
-proxy_videos: false
-external_proxy: false
-maintenance_mode: false
-show_admin_message: false
-admin_message_title: "Message from the admin"
-admin_message: "Message from the admin text"
-admin_user: "admin_username"
-max_old_user_days: 60
-donate_url: ""
-"""
+
+class DEFAULT_CONFIG:
+    server_name = ""
+    max_instance_users = 0
+    server_location = "?"
+    proxy_images = False
+    proxy_videos = False
+    external_proxy = False
+    maintenance_mode = False
+    show_admin_message = False
+    admin_message_title = "Message from the admin"
+    admin_message = "Message from the admin text"
+    admin_user = ""
+    max_old_user_days = 60
+    donate_url = ""
+
+    require_login = True
 
 
-default_config = yaml_load(DEFAULT_CONFIG)
+
+default_config = {k: v for k, v in DEFAULT_CONFIG.__dict__.items() if not k.startswith('_')}
 file_config = yaml_load(open('yotter-config.yaml'))
-
-# merge
-dict_config = dict(default_config, **file_config)
-
+dict_config = dict(default_config, **file_config)  # merge
 config = namedtuple('config', dict_config.keys())(*dict_config.values())
 
 def get_config():
