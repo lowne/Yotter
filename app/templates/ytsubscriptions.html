@@ -16,14 +16,7 @@
 <div class="ui text container">
     <div class="ui centered cards">
         {% for channel in channels %}
-        <div class="ui card">
-            <a class="image" href="{{url_for('ytchannel', id=channel.cid)}}">
-                <img src="{{channel.avatar}}">
-            </a>
-            <div class="content">
-                <a class="header" href="{{url_for('ytchannel', id=channel.cid)}}">{{channel.name}}</a>
-            </div>
-        </div>
+            {% include 'yt_channelitem.html' %}
         {% endfor %}
     </div>
 </div>

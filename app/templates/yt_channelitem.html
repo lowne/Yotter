@@ -1,0 +1,9 @@
+<div class="ui card">
+    <a class="image" href="{{url_for('ytchannel', cid=channel.cid)}}">
+        <img src="{{channel.avatar}}">
+    </a>
+    <div class="content">
+        <a class="header" href="{{url_for('ytchannel', cid=channel.cid)}}">{{channel.name}}</a>
+    </div>
+</div>
+

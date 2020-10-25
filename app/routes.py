@@ -65,12 +65,11 @@ def index():
 @app.route('/feed', methods=['GET', 'POST'])
 @login_required
 def ytfeed():
-    follow_count = len(current_user.yt_followed_channels)
     # start_time = time.time()
     cids = current_user.yt_followed_cids
     videos = get_recent_videos(cids, max_days=30, max_per_channel=10)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
-    return render_template('ytfeed.html', title=f"Yotter | {current_user.username}'s feed", videos=videos, follow_count=follow_count)
+    return render_template('ytfeed.html', videos=videos)
 
 
 @app.route('/subscriptions', methods=['GET', 'POST'])
@@ -122,63 +121,47 @@ def ytsearch():
         return render_template('ytsearch.html', form=form, results=False)
 
 
-@app.route('/subscribe/<channelId>', methods=['POST'])
+@app.route('/subscribe/<cid>', methods=['POST'])
 @login_required
-def ytsubscribe(channelId):
-    followYoutubeChannel(channelId)
+def ytsubscribe(cid):
+    chan = ytChannel(cid=cid)
+    if chan in current_user.yt_followed_channels: flash(f'Already following "{chan.name}"', 'error')
+    elif chan.invalid: flash(f'Channel id "{cid}" is not valid', 'error')
+    else:
+        current_user.yt_followed_channels.add(chan)
+        db.session.commit()
+        flash(f'"{chan.name}" followed!', 'success')
     return redirect(request.referrer)
 
 
-def followYoutubeChannel(channelId):
-    chan = ytChannel(cid=channelId)
-    if chan in current_user.yt_followed_channels: # already followed
-        flash(f'Already following "{chan.name}"', 'error')
-        return False
-    if chan.invalid:
-        flash(f'Channel id "{channelId}" is not valid', 'error')
-        return False
-    current_user.yt_followed_channels.add(chan)
-    db.session.commit()
-    flash(f'"{chan.name}" followed!', 'success')
-    return True
-
-
-@app.route('/unsubscribe/<channelId>', methods=['POST'])
+@app.route('/unsubscribe/<cid>', methods=['POST'])
 @login_required
-def ytunsubscribe(channelId):
-    unfollowYoutubeChannel(channelId)
+def ytunsubscribe(cid):
+    chan = ytChannel(cid=cid)
+    if chan not in current_user.yt_followed_channels: flash(f'Already not following "{chan.name}"', 'error')
+    else:
+        current_user.yt_followed_channels.remove(chan)
+        db.session.commit()
+        if chan.invalid: flash(f'Channel id "{cid}" is not valid', 'error')
+        else: flash(f'"{chan.name}" unfollowed', 'info')
     return redirect(request.referrer)
 
 
-def unfollowYoutubeChannel(channelId):
-    chan = ytChannel(cid=channelId)
-    if chan not in current_user.yt_followed_channels:  # already unfollowed
-        flash(f'Already not following "{chan.name}"', 'error')
-        return False
-    current_user.yt_followed_channels.remove(chan)
-    db.session.commit()
-    if chan.invalid:
-        flash(f'Channel id "{channelId}" is not valid', 'error')
-        return False
-    flash(f'"{chan.name}" unfollowed', 'info')
-    return True
+@app.route('/c/<custom>', methods=['GET'])
+@check_login
+def ytchannel_custom(custom):
+    return _channel_page(request, ytChannel.for_urlpath(request.path))
 
 
-@app.route('/c/<id>', methods=['GET'])
-@login_required
-def ytchannel_custom(id):
-    return _channel_page(request, get_channel_for_urlpath(request.path))
+@app.route('/user/<username>', methods=['GET'])
+@check_login
+def ytchannel_username(username):
+    return _channel_page(request, ytChannel.for_urlpath(request.path))
 
 
-@app.route('/user/<id>', methods=['GET'])
-@login_required
-def ytchannel_username(id):
-    return _channel_page(request, get_channel_for_urlpath(request.path))
-
-
-@app.route('/channel/<id>', methods=['GET'])
-@login_required
-def ytchannel(id):
+@app.route('/channel/<cid>', methods=['GET'])
+@check_login
+def ytchannel(cid):
     return _channel_page(request, ytChannel(id))
 
 
@@ -274,7 +257,7 @@ def ytstream(url):
         return response
     else:
         flash("Something went wrong loading the video... Try again.")
-        return redirect(url_for('youtube'))
+        return redirect(url_for('error/500'))
 
 
 def download_file(streamable):

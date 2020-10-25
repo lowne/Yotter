@@ -13,24 +13,24 @@
         <p>{{channel.description}}</p>
     </div>
     <div class="ui vertical segment">
-          <div class="ui tiny statistic">
+        <div class="ui tiny statistic">
             <div class="value">
                 <i class="user icon"></i> {{channel.sub_count}}
             </div>
             <div class="label">
-               Followers
+                Followers
             </div>
-          </div>
+        </div>
 {% if not channel.invalid and current_user.is_authenticated %}
     {% if not channel.id in current_user.yt_followed_cids %}
-        <form action="{{ url_for('ytsubscribe', channelId=channel.id) }}" method="post">
+        <form action="{{ url_for('ytsubscribe', cid=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red button">
                 <i class="user icon"></i>
                 Suscribe
             </button>
         </form>
     {% else %}
-        <form action="{{ url_for('ytunsubscribe', channelId=channel.id) }}" method="post">
+        <form action="{{ url_for('ytunsubscribe', cid=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red active button">
                 <i class="user icon"></i>
                 Unsuscribe

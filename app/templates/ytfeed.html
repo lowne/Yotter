@@ -4,7 +4,7 @@
   <div style="padding: 1.3em;" class="ui one column centered grid">
     <a href="{{ url_for('ytsubscriptions') }}"><div class="ui small red statistic">
         <div class="value">
-            {{ follow_count }}
+            {{ current_user.yt_followed_channels|length }}
         </div>
         <div class="label">
             subscriptions
