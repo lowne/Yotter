@@ -19,13 +19,11 @@ from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytChannel, ytVideo
+from app.models import User, ytChannel, ytVideo, prop_mappers
 from youtube import comments, channel as ytch, search as yts
 from youtube import watch as ytwatch
 from youtube import yt_data_extract
 from youtube.channel import post_process_channel_info
-
-from app.youtubeng import get_recent_videos, proxy_url_mappers, get_channel_for_urlpath
 
 
 ##########################
@@ -42,11 +40,12 @@ if config.external_proxy:
         encoded = {key + '_encoded': urllib.parse.quote_plus(value) for (key, value) in parsed.items()}
         joined = dict(parsed, **encoded)
         return config.external_proxy.format(**joined)
-    if config.proxy_images: proxy_url_mappers['proxy_image'] = lambda url: ext_proxy_mapper(_fix_thumbnail_hq(url))
-    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = ext_proxy_mapper
+    if config.proxy_images: prop_mappers['map_image_url'] = lambda url: ext_proxy_mapper(_fix_thumbnail_hq(url))
+    if config.proxy_videos: prop_mappers['map_stream_url'] = ext_proxy_mapper
 else:
-    if config.proxy_images: proxy_url_mappers['proxy_image'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
-    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = lambda url: url_for('ytstream', url=url)
+    if config.proxy_images: prop_mappers['map_image_url'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
+    if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
+
 
 
 
@@ -66,8 +65,9 @@ def index():
 @login_required
 def ytfeed():
     # start_time = time.time()
-    cids = current_user.yt_followed_cids
-    videos = get_recent_videos(cids, max_days=30, max_per_channel=10)
+    videos = []
+    for cid in current_user.yt_followed_cids: videos.extend(ytChannel(cid).get_recent_videos(max_n=10, max_days=30))
+    videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
     return render_template('ytfeed.html', videos=videos)
 

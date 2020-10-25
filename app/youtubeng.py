@@ -24,16 +24,16 @@ def utcnow():
 
 ATTRFLAG = dict()
 
-proxy_url_mappers = {
-  'proxy_image': lambda u: u,
-  'proxy_stream': lambda u: u,
+prop_mappers = {
+  'map_image_url': lambda u: u,
+  'map_stream_url': lambda u: u,
 }
 
 # class decorator
 def propgroups(cl):
     propnames = [prop for props in cl.__propgroups__.values() for prop in props]
     cl.__propnames__ = propnames
-    if not getattr(cl, '__proxyprops__'): cl.__proxyprops__ = {}
+    if not getattr(cl, '__prop_mappers__'): cl.__prop_mappers__ = {}
     cl_init = cl.__init__
 
     @wraps(cl_init)
@@ -57,6 +57,11 @@ def propgroups(cl):
         for k, v in attrs.items(): setattr(self, k, v)
         return resp
     cl._return_error = return_error
+
+    def make_error(self, error):
+        self._return_error('__none', error)
+        return self
+    cl._make_error = make_error
 
     for grp, props in cl.__propgroups__.items():
         # use a default arg to capture the value in the closure
@@ -95,10 +100,10 @@ def propgroups(cl):
                 setattr(self, f'_{prop}', v)
                 getattr(self, f'_set_{grp}')()
 
-            proxy_key = cl.__proxyprops__.get(prop, None)
-            if proxy_key:
-                def pset(self, v, grp=grp, prop=prop, proxy_key=proxy_key):
-                    setattr(self, f'_{prop}', proxy_url_mappers[proxy_key](v))
+            mapper_key = cl.__prop_mappers__.get(prop, None)
+            if mapper_key:
+                def pset(self, v, grp=grp, prop=prop, mapper_key=mapper_key):
+                    setattr(self, f'_{prop}', prop_mappers[mapper_key](v))
                     getattr(self, f'_set_{grp}')()
 
             def pdel(self, grp=grp, prop=prop):  # invalidate the cache and rebuild on next access
@@ -117,21 +122,21 @@ def fix_ytlocal_url(url):
 
 
 @propgroups
-class ytVideo:
+class ytngVideo:
     __propgroups__ = {'oembed': ['invalid', 'title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
                       'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos', 'av_sources', 'audio_sources', 'caption_sources'],
                       'from_lists': ['badges'],
                       'ts_human': ['timestamp_human'],
                       'NYI': ['is_upcoming']}
 
-    __proxyprops__ = {'thumbnail': 'proxy_image'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'thumbnail': '', 'channel_name': '', 'channel_url': '', 'cid': 'NOTFOUND',
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'duration': '--', 'is_live': False, 'description': 'Invalid video ID',
                         'view_count': 0, 'rating': 0, 'rating_count': 0, 'tags': [], 'related_videos': [], 'av_sources': [], 'audio_sources': [], 'caption_sources': [],
                         'badges': [], 'timestamp_human': 'never'}
 
-    def __repr__(self): return f"<ytVideo {self.id}>"
+    def __repr__(self): return f"<ytngVideo {self.id}>"
     # def __hash__(self): return hash(self.id)
 
     def __init__(self, id):
@@ -161,7 +166,7 @@ class ytVideo:
 
         def make_video_source(fmt):
             return {
-                'src': proxy_url_mappers['proxy_stream'](fmt['url']),
+                'src': prop_mappers['map_stream_url'](fmt['url']),
                 'type': f"video/{fmt['ext']}",
                 'quality': fmt['quality'],
                 'height': fmt['height'],
@@ -170,7 +175,7 @@ class ytVideo:
 
         def make_audio_source(fmt):
             return {
-                'src': proxy_url_mappers['proxy_stream'](fmt['url']),
+                'src': prop_mappers['map_stream_url'](fmt['url']),
                 'type': f"audio/{fmt['ext']}",
                 'quality': f"{fmt['audio_bitrate']}kpbs",
                 'bitrate': fmt['audio_bitrate'],
@@ -191,7 +196,7 @@ class ytVideo:
         # [TODO] this uses ytlocal's settings.txt, but it's a lot to bring in
         caption_sources = youtube.watch.get_subtitle_sources(info)
         for caption in caption_sources:
-            caption['src'] = proxy_url_mappers['proxy_image'](fix_ytlocal_url(caption['url']))
+            caption['src'] = prop_mappers['map_image_url'](fix_ytlocal_url(caption['url']))
 
         likes, dislikes, rating = info['like_count'], info['dislike_count'], 50
         votes = likes + dislikes
@@ -203,7 +208,7 @@ class ytVideo:
         related = []
         for item in info['related_videos']:
             if item['type'] == 'video':
-                video = ytVideo(item['id'])
+                video = ytngVideo(item['id'])
                 video.title = item['title']
                 video.thumbnail = item['thumbnail']
                 video.channel_name = info['author']
@@ -246,7 +251,7 @@ class ytVideo:
         if comments is None: return []
         comments.sort(key=lambda x: x['likes'], reverse=True)
         for cmnt in comments:
-            cmnt['thumbnail'] = proxy_url_mappers['proxy_image'](cmnt['thumbnail'])
+            cmnt['thumbnail'] = prop_mappers['map_image_url'](cmnt['thumbnail'])
         return comments
 
     @fscache.memoize(timeout=1)
@@ -261,16 +266,8 @@ class ytVideo:
     def views_human(self): return intword(self.view_count)
 
 
-# def timedelta_human_str(delta):
-#     if delta.days >= 7: return f"{int(delta.days/7)}w"
-#     if delta.days > 0: return f"{delta.days}d"
-#     elif delta.seconds >= 3600: return f"{int(delta.seconds/3600)}h"
-#     else: return f"{int(delta.seconds/60)}m"
-
-
-
 @propgroups
-class ytChannel:
+class ytngChannel:
     # all_videos should prolly be a method with page
     # __propgroups__ = {'from_search': ['name', 'avatar', 'sub_count', 'invalid'], 'feed': ['recent_videos'],
     #                   'about_page': ['joined', 'descrption', 'view_count', 'links'], 'NYI': ['playlists', 'all_videos']}
@@ -279,13 +276,13 @@ class ytChannel:
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
 
-    __proxyprops__ = {'avatar': 'proxy_image'}
+    __prop_mappers__ = {'avatar': 'map_image_url'}
 
-    __invalid_data__ = {'invalid': True, 'name': '--invalid channel id--', 'url': '', 'avatar': '', 'sub_count': 0, 'view_count': 0,
+    __invalid_data__ = {'invalid': True, 'name': '__error__', 'url': '', 'avatar': '', 'sub_count': 0, 'view_count': 0,
                         'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': [],
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
-    def __repr__(self): return f"<ytChannel {self.cid}>"
+    def __repr__(self): return f"<ytngChannel {self.id}>"
     # def __hash__(self): return hash(repr(self))
 
     def __init__(self, cid):
@@ -318,7 +315,7 @@ class ytChannel:
             try: published = dateparse(rssFeed.feed.published)
             except (AttributeError, ValueError): published = now
             for entry in rssFeed.entries:
-                video = ytVideo(entry.yt_videoid)
+                video = ytngVideo(entry.yt_videoid)
                 video.title = entry.title
                 video.thumbnail = entry.media_thumbnail[0]['url']
                 video.channel_name = entry.author_detail.name
@@ -365,7 +362,7 @@ class ytChannel:
     def get_videos(self, page=1, sort=3):
         videos = []
         if self.invalid: return videos
-        view = 1 # not sure what this this
+        view = 1  # not sure what this this
         polymer = youtube.channel.get_channel_tab(self.cid, page, sort, 'videos', view)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'videos')
 
@@ -375,7 +372,7 @@ class ytChannel:
 
         for item in info['items']:
             if item['type'] == 'video':
-                video = ytVideo(item['id'])
+                video = ytngVideo(item['id'])
                 video.title = item['title']
                 video.thumbnail = item['thumbnail']
                 video.channel_name = info['channel_name']
@@ -390,8 +387,6 @@ class ytChannel:
                 videos.append(video)
         return videos
 
-
-
     def get_recent_videos(self, max_n=999, max_days=30):
         videos = []
         if self.invalid: return videos
@@ -402,24 +397,12 @@ class ytChannel:
             videos.append(v)
         return videos
 
-
-def get_channel_for_urlpath(path):
-    cid = get_cid_for_urlpath(path)
-    # print(cid)
-    # raise RuntimeError('haha')
-    if cid is not None: return ytChannel(cid)
-    ch = ytChannel('NOTFOUND')
-    ch._return_error('__none',f"invalid path '{path}'")
-    # for k, v in YT_CHANNEL_INVALID_DATA.items(): setattr(ch, k, v)
-    return ch
+    @classmethod
+    def for_urlpath(cls, path):
+        cid = get_cid_for_urlpath(path)
+        if cid is not None: return ytngChannel(cid, url=f'{BASE_URL}{path}')
+        return ytngChannel('NOTFOUND')._make_error(f"invalid path '{path}'")
 
 
 @fscache.memoize(timeout=86400 * 7)
-def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL}/{path}')
-
-
-def get_recent_videos(cids, max_per_channel=99, max_days=9999):
-    videos = []
-    for cid in cids: videos.extend(ytChannel(cid).get_recent_videos(max_n=max_per_channel, max_days=max_days))
-    videos.sort(key=operator.attrgetter('published'), reverse=True)
-    return videos
+def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL}{path}')

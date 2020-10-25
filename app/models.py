@@ -4,7 +4,7 @@ from app import db, login, fscache
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
-from app.youtubeng import ytVideo, ytChannel
+from app.youtubeng import ytngVideo, ytngChannel, prop_mappers
 
 
 ####################################################################
@@ -60,6 +60,7 @@ def unique_constructor(scoped_session, hashfunc, queryfunc):
 ####################################################################
 
 
+
 user_channel_assoc = db.Table('user_channel_assoc',
                               db.Column('channel_id', db.Integer, db.ForeignKey('yt_channel.id')),
                               db.Column('user_id', db.Integer, db.ForeignKey('user.id'))
@@ -67,8 +68,8 @@ user_channel_assoc = db.Table('user_channel_assoc',
 
 
 @unique_constructor(db.session,
-                    lambda username: username,
-                    lambda query, username: query.filter(User.username == username)
+                    lambda username, **kw: username,
+                    lambda query, username, **kw: query.filter(User.username == username)
                     )
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -99,11 +100,16 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 
+@login.user_loader
+def load_user(id):
+    return User.query.get(int(id))
+
+
 @unique_constructor(db.session,
-                    lambda cid: cid,
-                    lambda query, cid: query.filter(ytChannel.cid == cid)
+                    lambda cid, **kw: cid,
+                    lambda query, cid, **kw: query.filter(ytChannel.cid == cid)
                     )
-class ytChannel(ytChannel, db.Model):
+class ytChannel(ytngChannel, db.Model):
     __tablename__ = 'yt_channel'
     id = db.Column(db.Integer, primary_key=True)
     cid = db.Column(db.String(30), index=True, unique=True)
@@ -112,8 +118,11 @@ class ytChannel(ytChannel, db.Model):
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
     def __repr__(self): return f'<ytChannel {self.cid}>'
 
+    @classmethod
+    def for_urlpath(cls, path):
+        o = ytngChannel.for_urlpath(path)
+        return ytChannel(o.cid, **{k: getattr(o, k) for k in ytngChannel.__propnames__ if hasattr(o, f'_{k}')})
 
-@login.user_loader
-def load_user(id):
-    return User.query.get(int(id))
 
+class ytVideo(ytngVideo):
+    def __repr__(self): return f'<ytVideo {self.id}>'
