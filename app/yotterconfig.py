@@ -27,6 +27,7 @@ class DEFAULT_CONFIG:
     donate_url = ""
 
     require_login = True
+    restricted_mode = False
 
 
 

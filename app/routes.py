@@ -56,6 +56,14 @@ def check_login(f):
     return decorated
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_admin: return redirect(url_for('error/404'))
+        return f(*args, **kwargs)
+    return decorated
+
+
 ##########################
 #          Routes        #
 ##########################
@@ -65,8 +73,13 @@ def check_login(f):
 def index():
     if current_user.is_authenticated: return redirect(url_for('ytfeed'))
     if config.require_login: return app.login_manager.unauthorized()
+    if config.restricted_mode: return redirect(url_for('ytgallery'))
     return redirect(url_for('ytsearch'))
 
+@app.route('/gallery', methods=['GET'])
+def ytgallery():
+    channels = ytChannel.query.filter_by(is_allowed=True).all()
+    return render_template('ytgallery.html', channels=channels)
 
 @app.route('/feed', methods=['GET', 'POST'])
 @login_required
@@ -172,6 +185,9 @@ def ytchannel(cid):
 
 
 def _channel_page(request, ch):
+    if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
+        ch = ytChannel('NOTFOUND')._make_error('Channel not found')
+
     form = ChannelForm()
     button_form = EmptyForm()
 
@@ -227,6 +243,11 @@ def watch():
 
 
 def _video_page(request, video):
+    ch = ytChannel(video.cid)
+    # TODO check allow playlists
+    if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
+        video = ytVideo('NOTFOUND')._make_error('Video not found')
+
     # Markup description
     description = Markup(bleach.linkify(video.description.replace("\n", "<br>")))
 
@@ -283,6 +304,38 @@ def ytimg(url):
     response.cache_control.public = True
     response.cache_control.max_age = int(60000)
     return response
+
+
+
+#########################
+#         admin         #
+#########################
+@app.route('/_admin/<what>/<where>/<action>/<id>', methods=['POST'])
+@admin_required
+def yt_admin_action(what, where, action, id):
+    attr = f'is_{where}'
+    if where != 'allowed' and where != 'blocked': return redirect(url_for('error/405'))
+    if what == 'channel':
+        obj = ytChannel(id)
+        name = obj.name
+    elif what == 'playlist':
+        obj = ytPlaylist(id)
+    else: return redirect(url_for('error/405'))
+    if action != 'add' and action != 'remove': return redirect(url_for('error/405'))
+    print(obj.__dict__)
+    print(obj.is_allowed)
+    if obj.invalid: flash(f'{what} id "{id}" is not valid', 'error')
+    else:
+        curr = getattr(obj, f'is_{where}')
+        wanted = action == 'add'
+        if curr == wanted: flash(f'"{name}" already {"" if wanted else "not "} {where}', 'error')
+        else:
+            setattr(obj, f'is_{where}', wanted)
+            db.session.commit()
+            if wanted: flash(f'"{name} is now {where}!', 'success')
+            else: flash(f'"{name} is not {where} anymore', 'info')
+    return redirect(request.referrer)
+
 
 #########################
 #### General Logic ######

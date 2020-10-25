@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if channels %}
+<div class="ui text container">
+    <div class="ui centered cards">
+        {% for channel in channels %}
+            {% include 'yt_channelitem.html' %}
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+    {% include '_empty_feed.html' %}
+{% endif %}
+{% endblock %}

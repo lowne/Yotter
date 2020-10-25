@@ -113,6 +113,8 @@ class ytChannel(ytngChannel, db.Model):
     __tablename__ = 'yt_channel'
     id = db.Column(db.Integer, primary_key=True)
     cid = db.Column(db.String(30), index=True, unique=True)
+    is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
+    is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
     # channelName = db.Column(db.String(100))
     followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
