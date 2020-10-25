@@ -4,7 +4,7 @@
 <div style="padding: 1.3em;" class="ui one column centered grid">
     <div class="ui red statistic">
         <div class="value">
-            {{ count }}
+            {{ channels|length }}
         </div>
         <div class="label">
             subscriptions
@@ -13,6 +13,7 @@
 </div>
 
 
+{% if channels %}
 <div class="ui text container">
     <div class="ui centered cards">
         {% for channel in channels %}
@@ -20,5 +21,8 @@
         {% endfor %}
     </div>
 </div>
+{% else %}
+    {% include '_empty_feed.html' %}
+{% endif %}
 
 {% endblock %}

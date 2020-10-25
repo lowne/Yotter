@@ -77,8 +77,7 @@ def ytfeed():
 def ytsubscriptions():
     form = EmptyForm()
     channels = current_user.yt_followed_channels
-    count = len(channels)
-    return render_template('ytsubscriptions.html', form=form, channels=channels, count=count, config=config)
+    return render_template('ytsubscriptions.html', form=form, channels=channels)
 
 
 @app.route('/search', methods=['GET', 'POST'])
@@ -162,7 +161,7 @@ def ytchannel_username(username):
 @app.route('/channel/<cid>', methods=['GET'])
 @check_login
 def ytchannel(cid):
-    return _channel_page(request, ytChannel(id))
+    return _channel_page(request, ytChannel(cid))
 
 
 def _channel_page(request, ch):

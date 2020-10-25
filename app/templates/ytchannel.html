@@ -43,14 +43,14 @@
 
     <br>
     <br>
-    {% if videos|length == 0 %}
-        {% include '_empty_feed.html' %}
-    {% else %}
+    {% if videos %}
     <div class="ui centered cards">
         {% for video in videos %}
             {% include 'yt_videoitem.html' %}
         {% endfor %}
     </div>
+    {% else %}
+        {% include '_empty_feed.html' %}
     {% endif %}
 
     <br>
