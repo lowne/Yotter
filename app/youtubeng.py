@@ -3,7 +3,7 @@ from requests_futures.sessions import FuturesSession
 import datetime
 from dateutil.parser import parse as dateparse
 from humanize import naturaldelta, intword
-import functools
+from functools import wraps
 import operator
 import math
 import json
@@ -36,7 +36,7 @@ def propgroups(cl):
     if not getattr(cl, '__proxyprops__'): cl.__proxyprops__ = {}
     cl_init = cl.__init__
 
-    @functools.wraps(cl_init)
+    @wraps(cl_init)
     def init(self, *args, **kwargs):
         cl_init(self, *args)
         for k, v in kwargs.items():

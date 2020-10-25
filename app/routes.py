@@ -6,7 +6,7 @@ import urllib
 from concurrent.futures import as_completed
 
 import bleach
-import feedparser
+
 import requests
 from flask import Response
 from flask import render_template, flash, redirect, url_for, request, send_from_directory, Markup
@@ -28,14 +28,8 @@ from youtube.channel import post_process_channel_info
 from app.youtubeng import get_recent_videos, proxy_url_mappers, get_channel_for_urlpath
 
 
-
-
-#########################################
-
-#########################################
-
 ##########################
-#### Config variables ####
+#         Config         #
 ##########################
 config = yotterconfig.get_config()
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
@@ -52,12 +46,12 @@ if config.external_proxy:
     if config.proxy_videos: proxy_url_mappers['proxy_stream'] = ext_proxy_mapper
 else:
     if config.proxy_images: proxy_url_mappers['proxy_image'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
-    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = lambda url: url_for('stream', url=url)
+    if config.proxy_videos: proxy_url_mappers['proxy_stream'] = lambda url: url_for('ytstream', url=url)
 
 
 
 ##########################
-#### Global variables ####
+#          Routes        #
 ##########################
 
 @app.route('/')
@@ -68,31 +62,27 @@ def index():
     return render_template('home.html', config=config)
 
 
-#########################
-#### Youtube Logic ######
-#########################
-@app.route('/youtube', methods=['GET', 'POST'])
+@app.route('/feed', methods=['GET', 'POST'])
 @login_required
-def youtube():
-    followCount = len(current_user.yt_followed_channels)
-    start_time = time.time()
+def ytfeed():
+    follow_count = len(current_user.yt_followed_channels)
+    # start_time = time.time()
     cids = current_user.yt_followed_cids
-    videos = get_recent_videos(cids, max_days = 30, max_per_channel = 10)
-    print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
-    return render_template('youtube.html', title="Yotter | Youtube", videos=videos, followCount=followCount,
-                           config=config)
+    videos = get_recent_videos(cids, max_days=30, max_per_channel=10)
+    # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
+    return render_template('ytfeed.html', title=f"Yotter | {current_user.username}'s feed", videos=videos, follow_count=follow_count)
 
 
-@app.route('/ytfollowing', methods=['GET', 'POST'])
+@app.route('/subscriptions', methods=['GET', 'POST'])
 @login_required
-def ytfollowing():
+def ytsubscriptions():
     form = EmptyForm()
     channels = current_user.yt_followed_channels
     count = len(channels)
-    return render_template('ytfollowing.html', form=form, channels=channels, count=count, config=config)
+    return render_template('ytsubscriptions.html', form=form, channels=channels, count=count, config=config)
 
 
-@app.route('/ytsearch', methods=['GET', 'POST'])
+@app.route('/search', methods=['GET', 'POST'])
 @login_required
 def ytsearch():
     form = ChannelForm()
@@ -113,11 +103,11 @@ def ytsearch():
         filters = {"time": 0, "type": 0, "duration": 0}
         results = yts.search_by_terms(query, page, autocorrect, sort, filters)
 
-        next_page = "/ytsearch?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) + 1)
+        next_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) + 1)
         if int(page) == 1:
-            prev_page = "/ytsearch?q={q}&s={s}&p={p}".format(q=query, s=sort, p=1)
+            prev_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=1)
         else:
-            prev_page = "/ytsearch?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) - 1)
+            prev_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) - 1)
 
         for video in results['videos']:
             video['videoThumb'] = proxy_image_url(video['videoThumb'])
@@ -132,9 +122,9 @@ def ytsearch():
         return render_template('ytsearch.html', form=form, results=False)
 
 
-@app.route('/ytfollow/<channelId>', methods=['POST'])
+@app.route('/subscribe/<channelId>', methods=['POST'])
 @login_required
-def ytfollow(channelId):
+def ytsubscribe(channelId):
     followYoutubeChannel(channelId)
     return redirect(request.referrer)
 
@@ -153,9 +143,9 @@ def followYoutubeChannel(channelId):
     return True
 
 
-@app.route('/ytunfollow/<channelId>', methods=['POST'])
+@app.route('/unsubscribe/<channelId>', methods=['POST'])
 @login_required
-def ytunfollow(channelId):
+def ytunsubscribe(channelId):
     unfollowYoutubeChannel(channelId)
     return redirect(request.referrer)
 
@@ -176,19 +166,19 @@ def unfollowYoutubeChannel(channelId):
 
 @app.route('/c/<id>', methods=['GET'])
 @login_required
-def channel_custom(id):
+def ytchannel_custom(id):
     return _channel_page(request, get_channel_for_urlpath(request.path))
 
 
 @app.route('/user/<id>', methods=['GET'])
 @login_required
-def channel_username(id):
+def ytchannel_username(id):
     return _channel_page(request, get_channel_for_urlpath(request.path))
 
 
 @app.route('/channel/<id>', methods=['GET'])
 @login_required
-def channel(id):
+def ytchannel(id):
     return _channel_page(request, ytChannel(id))
 
 
@@ -208,7 +198,7 @@ def _channel_page(request, ch):
     print(next_page)
     print(prev_page)
 
-    return render_template('channel.html', form=form, btform=button_form, channel=ch, videos=videos,
+    return render_template('ytchannel.html', form=form, btform=button_form, channel=ch, videos=videos,
                            config=config, next_page=next_page, prev_page=prev_page)
 
 
@@ -236,7 +226,7 @@ def get_live_urls(urls):
 
 @app.route('/v/<id>', methods=['GET'])
 @login_required
-def v_id(id):
+def ytvideo(id):
     return _video_page(request, ytVideo(id))
 
 @app.route('/watch', methods=['GET'])
@@ -251,7 +241,7 @@ def _video_page(request, video):
     # Markup description
     description = Markup(bleach.linkify(video.description.replace("\n", "<br>")))
 
-    return render_template("video.html", video=video, description=description, config=config, comments=[])
+    return render_template('ytvideo.html', video=video, description=description, config=config, comments=[])
 
 
 def markupString(string):
@@ -266,7 +256,7 @@ def markupString(string):
 ## PROXY videos through Yotter server to the client.
 @app.route('/stream/<path:url>', methods=['GET', 'POST'])
 @login_required
-def stream(url):
+def ytstream(url):
     # This function proxies the video stream from GoogleVideo to the client.
     headers = Headers()
     if (url):

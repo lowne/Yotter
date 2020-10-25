@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
 from app.youtubeng import ytVideo, ytChannel
 
+
 ####################################################################
 # https://github.com/sqlalchemy/sqlalchemy/wiki/UniqueObject
 def _unique(session, cls, hashfunc, queryfunc, constructor, arg, kw):
@@ -26,6 +27,7 @@ def _unique(session, cls, hashfunc, queryfunc, constructor, arg, kw):
                 session.add(obj)
         cache[key] = obj
         return obj
+
 
 def unique_constructor(scoped_session, hashfunc, queryfunc):
     def decorate(cls):
@@ -78,7 +80,6 @@ class User(UserMixin, db.Model):
     yt_followed_channels = db.relationship("ytChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
     # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
     yt_followed_cids = association_proxy('yt_followed_channels', 'cid', creator=lambda cid: ytChannel(cid=cid))
-
 
     def __repr__(self): return f'<User {self.username}>'
 

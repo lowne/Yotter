@@ -23,14 +23,14 @@
           </div>
 {% if not channel.invalid and current_user.is_authenticated %}
     {% if not channel.id in current_user.yt_followed_cids %}
-        <form action="{{ url_for('ytfollow', channelId=channel.id) }}" method="post">
+        <form action="{{ url_for('ytsubscribe', channelId=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red button">
                 <i class="user icon"></i>
                 Suscribe
             </button>
         </form>
     {% else %}
-        <form action="{{ url_for('ytunfollow', channelId=channel.id) }}" method="post">
+        <form action="{{ url_for('ytunsubscribe', channelId=channel.id) }}" method="post">
             <button type="submit" value="Submit" class="ui red active button">
                 <i class="user icon"></i>
                 Unsuscribe
@@ -48,7 +48,7 @@
     {% else %}
     <div class="ui centered cards">
         {% for video in videos %}
-            {% include '_video_item.html' %}
+            {% include 'yt_videoitem.html' %}
         {% endfor %}
     </div>
     {% endif %}

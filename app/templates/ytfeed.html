@@ -2,19 +2,19 @@
 
 {% block content %}
   <div style="padding: 1.3em;" class="ui one column centered grid">
-    <a href="{{ url_for('ytfollowing') }}"><div class="ui small red statistic">
+    <a href="{{ url_for('ytsubscriptions') }}"><div class="ui small red statistic">
         <div class="value">
-            {{ followCount }}
+            {{ follow_count }}
         </div>
         <div class="label">
-            Following
+            subscriptions
         </div>
     </div></a>
   </div>
   {% if videos %}
     <div class="ui centered cards">
       {% for video in videos %}
-        {% include '_video_item.html' %}
+        {% include 'yt_videoitem.html' %}
       {% endfor %}
     </div>
   {% else %}

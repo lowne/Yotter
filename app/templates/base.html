@@ -31,7 +31,7 @@
             {% if current_user.is_anonymous %}
             <a href="{{ url_for('login') }}" class="item">Login</a>
             {% else %}
-                <a href="{{ url_for('youtube') }}" class="youtube item"><i class="youtube icon"></i></a>
+                <a href="{{ url_for('ytfeed') }}" class="youtube item"><i class="youtube icon"></i></a>
                 <a href="{{ url_for('ytsearch') }}" class="youtube item"><i class="search icon"></i></a>
                 <div class="right menu">
                     <a href="{{ url_for('settings') }}" class="item"><i class="cog icon"></i></a>
