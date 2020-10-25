@@ -4,20 +4,20 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="ui text container">
-    {% if info.error != None or info.playability_error != None %}
+    {% if video.invalid %}
     <div class="ui center aligned text container">
         <div class="ui segment">
                 <h4 class="ui header">ERROR WITH VIDEO</h4>
         </div>
     </div>
-    {% elif info.playability_status != None %}
+    {% elif False and video.TODO_playability_status != None %}
     <div class="ui center aligned text container">
         <div class="ui segment">
                 <h4 class="ui header">SCHEDULED VIDEO</h4>
                 <h5 class="ui header">{{video.premieres}}</h5>
         </div>
     </div>
-    {% elif info.live %}
+    {% elif video.is_live %}
     <div class="video-js-responsive-container vjs-hd">
         <video-js id=live width="1080" class="video-js vjs-default-skin" controls>
             <source
@@ -40,10 +40,10 @@
             controls
             buffered
             preload="none">
-            {% for source in vsources %}
+            {% for source in video.av_sources %}
                     <source src="{{source.src}}" type="{{source.type}}">
             {% endfor %}
-            {% for caption in captions %}
+            {% for caption in video.caption_sources %}
                     <track kind="captions" src="{{caption.src}}" srclang="{{caption.srclang}}" label="{{caption.label}}">
             {% endfor %}
             </video-js>
@@ -52,18 +52,18 @@
 
     <div class="ui segments">
         <div class="ui segment">
-            <h2 class="ui header break-word">{{info.title}}</h2>
+            <h2 class="ui header break-word">{{video.title}}</h2>
         </div>
         <div class="ui horizontal segments">
           <div class="center aligned ui segment">
-            <a href="{{ url_for('channel', id=info.author_id)}}">
-                <i class="user icon"></i> <b>{{info.author}}</b>
+            <a href="{{ url_for('channel', id=video.cid)}}">
+                <i class="user icon"></i> <b>{{video.channel_name}}</b>
             </a>
           </div>
           <div class="center aligned ui segment">
             <div class="ui mini statistic">
                 <div class="value">
-                    <i class="grey eye icon"></i> <b>{{info.view_count}}</b>
+                    <i class="grey eye icon"></i> <b>{{video.views_human}}</b>
                 </div>
                 <div class="label">
                     views
@@ -71,42 +71,34 @@
             </div>
           </div>
           <div class="center aligned ui segment">
-            {% if info.rating | int > 49 %}
-                <div class="ui mini statistic">
-                    <div class="value">
-                        <i class="green thumbs up icon"></i> <b>{{info.rating}}%</b>
-                    </div>
-                    <div class="label">
-                        Total: {{info.like_count+info.dislike_count}} votes
-                    </div>
-                </div>
-            {% else %}
             <div class="ui mini statistic">
                 <div class="value">
-                    <i class="red thumbs down icon"></i> <b>{{info.rating}}%</b>
+                    {% if video.rating | int > 49 %}
+                    <i class="green thumbs up icon"></i>
+                    {% else %}
+                    <i class="red thumbs down icon"></i>
+                    {% endif %}
+                    <b>{{video.rating}}%</b>
                 </div>
                 <div class="label">
-                    Total: {{info.like_count+info.dislike_count}} votes
+                    {{video.rating_count}} votes
                 </div>
-                </div>
-            {% endif %}
+            </div>
           </div>
         </div>
 
         <div class="ui raised center aligned segment break-word">
             <p><i class="grey music icon"></i><b>Audio Only</b></p>
             <audio controls>
-                {% for format in info.formats %}
-                    {% if format.audio_valid %}
-                        <source src="{{format.url}}">
-                    {%endif%}
+                {% for source in video.audio_sources %}
+                    <source src="{{source.src}}">
                 {%endfor%}
               No audio available.
             </audio>
         </div>
 
         <div class="ui raised segment break-word">
-            <p>{{info.description}}</p>
+            <p>{{description}}</p>
         </div>
     </div>
 
@@ -118,7 +110,7 @@
     </div>
 
 <script src="{{ url_for('static',filename='video.min.js') }}"></script>
-{% if info.live %}
+{% if video.is_live %}
     <script src="{{ url_for('static',filename='videojs-http-streaming.min.js')}}"></script>
     <script>
         var player = videojs('live');

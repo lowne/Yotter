@@ -234,53 +234,24 @@ def get_live_urls(urls):
     return best_urls
 
 
+@app.route('/v/<id>', methods=['GET'])
+@login_required
+def v_id(id):
+    return _video_page(request, ytVideo(id))
+
 @app.route('/watch', methods=['GET'])
 @login_required
 def watch():
-    id = request.args.get('v', None)
-    info = ytwatch.extract_info(id, False, playlist_id=None, index=None)
+    vid = request.args.get('v', None)
+    if not vid: return redirect(url_for('error/405'))
+    return _video_page(request, ytVideo(vid))
 
-    vsources = ytwatch.get_video_sources(info, False)
-    # Retry 3 times if no sources are available.
-    retry = 3
-    while retry != 0 and len(vsources) == 0:
-        vsources = ytwatch.get_video_sources(info, False)
-        retry -= 1
 
-    for source in vsources:
-        source['src'] = proxy_video_source_url(source['src'])
-
-    # Parse video formats
-    for v_format in info['formats']:
-        v_format['url'] = proxy_video_source_url(v_format['url'])
-        if v_format['audio_bitrate'] is not None and v_format['vcodec'] is None:
-            v_format['audio_valid'] = True
-
-    captions = ytwatch.get_subtitle_sources(info)
-    for caption in captions:
-        caption['src'] = proxy_image_url(caption['src'])
-
+def _video_page(request, video):
     # Markup description
-    try:
-        info['description'] = Markup(bleach.linkify(info['description'].replace("\n", "<br>")))
-    except AttributeError or TypeError:
-        print(info['description'])
+    description = Markup(bleach.linkify(video.description.replace("\n", "<br>")))
 
-    # Get comments
-    videocomments = comments.video_comments(id, sort=0, offset=0, lc='', secret_key='')
-    # videocomments = utils.post_process_comments_info(videocomments)
-    if videocomments is not None:
-        videocomments.sort(key=lambda x: x['likes'], reverse=True)
-        for cmnt in videocomments:
-            cmnt['thumbnail'] = proxy_image_url(cmnt['thumbnail'])
-
-    # Calculate rating %
-    if info['like_count']+info['dislike_count']>0:
-        info['rating'] = str((info['like_count'] / (info['like_count'] + info['dislike_count'])) * 100)[0:4]
-    else:
-        info['rating'] = 50.0
-    return render_template("video.html", info=info, title='{}'.format(info['title']), config=config,
-                           videocomments=videocomments, vsources=vsources, captions=captions)
+    return render_template("video.html", video=video, description=description, config=config, comments=[])
 
 
 def markupString(string):
