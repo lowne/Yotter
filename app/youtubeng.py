@@ -8,7 +8,7 @@ import operator
 import math
 import json
 import feedparser
-from app import fscache
+from app import cache, fscache
 from youtube_search import YoutubeSearch
 
 import sys
@@ -38,6 +38,35 @@ def logged(f):
         print(f'.run {f}({args},{kwargs})')
         return f(*args,**kwargs)
     return wrapped
+
+
+def _unique(cls, hashfunc, constructor, arg, kw):
+    key = hashfunc(*arg, **kw)
+    obj = cache.get(key)
+    if obj is None:
+        obj = constructor(*arg, **kw)
+        cache.set(key, obj)
+    return obj
+
+
+def unique_constructor(hashfunc):
+    def decorate(cls):
+        def _null_init(self, *arg, **kw): pass
+        @wraps(cls)
+        def __new__(cls, bases, *arg, **kw):
+            if not arg and not kw: return object.__new__(cls)
+            def constructor(*arg, **kw):
+                obj = object.__new__(cls)
+                obj._init(*arg, **kw)
+                return obj
+            return _unique(cls, hashfunc, constructor, arg, kw)
+        cls._init = cls.__init__
+        cls.__init__ = _null_init
+        cls.__new__ = classmethod(__new__)
+        return cls
+    return decorate
+
+
 # class decorator
 def propgroups(cl):
     propnames = [prop for props in cl.__propgroups__.values() for prop in props]
@@ -125,8 +154,9 @@ BASE_URL = 'https://www.youtube.com'
 
 def fix_ytlocal_url(url):
     return url[1:] if url.startswith('/http') else url
-############################### VIDEO ######################################
 
+############################### VIDEO ######################################
+@unique_constructor(_idfn)
 @propgroups
 class ytngVideo:
     __propgroups__ = {'oembed': ['invalid', 'title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
@@ -315,6 +345,7 @@ def _get_atom_feed(url):
             'published': published, 'videos': videos}
 
 
+@unique_constructor(_idfn)
 @propgroups
 class ytngChannel:
     __propgroups__ = {'about_page': ['invalid', 'name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
@@ -427,6 +458,7 @@ def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL
 
 
 ############################### PLAYLIST ######################################
+@unique_constructor(_idfn)
 @propgroups
 class ytngPlaylist:
     __propgroups__ = {'page': ['invalid', 'title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
