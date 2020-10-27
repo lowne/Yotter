@@ -4,7 +4,7 @@ from app import db, login, fscache
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
-from app.youtubeng import ytngVideo, ytngChannel, prop_mappers
+from app.youtubeng import ytngVideo, ytngChannel, ytngPlaylist, prop_mappers
 
 
 ####################################################################
@@ -67,7 +67,11 @@ user_channel_assoc = db.Table('user_channel_assoc',
                               db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
                               )  # Association: CHANNEL --followed by--> [USERS]
 
-                              )  # Association: CHANNEL --followed by--> [USERS]
+
+user_playlist_assoc = db.Table('user_playlist_assoc',
+                              db.Column('playlist_rowid', db.Integer, db.ForeignKey('yt_playlist.rowid')),
+                              db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
+                              )  # Association: PLAYLIST --followed by--> [USERS]
 
 
 @unique_constructor(db.session,
@@ -79,6 +83,7 @@ class User(UserMixin, db.Model):
     def get_id(self): return self.rowid
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
     created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
+    # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
     password_hash = db.Column(db.String(128))
     last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
@@ -87,6 +92,9 @@ class User(UserMixin, db.Model):
     yt_followed_channels = db.relationship("ytChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
     # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
     yt_followed_cids = association_proxy('yt_followed_channels', 'id', creator=lambda id: ytChannel(id=id))
+
+    yt_followed_playlists = db.relationship("ytPlaylist", collection_class=set, secondary=user_playlist_assoc, back_populates="followers", lazy=True)
+    yt_followed_pids = association_proxy('yt_followed_playlists', 'id', creator=lambda id: ytPlaylist(id=id))
 
     def __repr__(self): return f'<User {self.username}>'
 
@@ -121,12 +129,37 @@ class ytChannel(ytngChannel, db.Model):
     rowid = db.Column(db.Integer, primary_key=True)
     id = db.Column(db.String(64), index=True, unique=True, nullable=False)
     created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
+    # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
     followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
 
 
+@unique_constructor(db.session,
+                    lambda id, **kw: id,
+                    lambda query, id, **kw: query.filter(ytPlaylist.id == id)
+                    )
+class ytPlaylist(ytngPlaylist, db.Model):
+    __tablename__ = 'yt_playlist'
+    def __repr__(self): return f'<ytPlaylist {self.id}>'
+    rowid = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
+    # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
+    # is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
+    followers = db.relationship('User', collection_class=set, secondary=user_playlist_assoc, back_populates="yt_followed_playlists", lazy=True)
+    follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
 
-class ytVideo(ytngVideo):
+
+@unique_constructor(db.session,
+                    lambda id, **kw: id,
+                    lambda query, id, **kw: query.filter(ytVideo.id == id)
+                    )
+class ytVideo(ytngVideo, db.Model):
+    __tablename__ = 'yt_video'
     def __repr__(self): return f'<ytVideo {self.id}>'
+    rowid = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)

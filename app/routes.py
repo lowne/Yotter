@@ -20,7 +20,7 @@ from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytChannel, ytVideo, prop_mappers
+from app.models import User, ytChannel, ytPlaylist, ytVideo, prop_mappers
 from youtube import comments, channel as ytch, search as yts
 from youtube import watch as ytwatch
 from youtube import yt_data_extract
@@ -77,6 +77,7 @@ def index():
     if config.require_login: return app.login_manager.unauthorized()
     if config.restricted_mode: return redirect(url_for('ytgallery'))
     return redirect(url_for('ytsearch'))
+
 
 @app.route('/gallery', methods=['GET'])
 def ytgallery():
@@ -236,6 +237,7 @@ def get_live_urls(urls):
 @check_login
 def ytvideo(id):
     return _video_page(request, ytVideo(id))
+
 
 @app.route('/watch', methods=['GET'])
 @check_login

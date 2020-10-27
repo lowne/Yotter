@@ -16,6 +16,7 @@ import os
 __ytl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'youtube-local')
 sys.path.append(__ytl_dir)
 import youtube
+import youtube.playlist
 
 
 def utcnow(): return datetime.datetime.now(datetime.timezone.utc)
@@ -269,6 +270,39 @@ class ytngVideo:
     def views_human(self): return intword(self.view_count)
 
 
+############################### CHANNEL ######################################
+# @fscache.memoize(timeout=3)
+def _get_atom_feed(url):
+    now = utcnow()
+    videos = []
+    with FuturesSession() as session:
+        resp = session.get(url).result()
+        rssFeed = feedparser.parse(resp.content)
+        try: published = dateparse(rssFeed.feed.published)
+        except (AttributeError, ValueError): published = now
+        for entry in rssFeed.entries:
+            video = ytngVideo(entry.yt_videoid)
+            video._store_if_absent('duration', '')
+            video.title = entry.title
+            video.thumbnail = entry.media_thumbnail[0]['url']
+            video.channel_name = entry.author_detail.name
+            video.channel_url = entry.author_detail.href
+            video.cid = entry.yt_channelid
+            # If youtube rss does not have parsed time, generate it. Else set time to 0.
+            try: video.published = dateparse(entry.published)
+            except ValueError: video.published = now
+            # try: video.updated = dateparse(entry.updated)
+            # except (AttributeError, ValueError): video.updated = now
+            video.description = entry.summary_detail.value
+            # video.description = re.sub(r'^https?:\/\/.*[\r\n]*', '', video.description[0:120] + "...",
+            #                            flags=re.MULTILINE)
+            video.view_count = entry.media_statistics['views']
+            video.rating = int(float(entry.media_starrating['average']) / float(entry.media_starrating['max']) * 100)
+            videos.append(video)
+    return {'title': rssFeed.feed.title, 'cid': rssFeed.feed.yt_channelid, 'channel_name': rssFeed.feed.author_detail.name, 'channel_url': rssFeed.feed.author_detail.href,
+            'published': published, 'videos': videos}
+
+
 @propgroups
 class ytngChannel:
     __propgroups__ = {'about_page': ['invalid', 'name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
@@ -303,42 +337,15 @@ class ytngChannel:
             }
         return {'name': info['name'], 'avatar': info['avatar'], 'sub_count': info['subCount'], 'invalid': info.get('invalid', False)}
 
-    # @fscache.memoize(timeout=3600 * 2)
-    @fscache.memoize(timeout=3)
+    @fscache.memoize(timeout=3600)
     def _get_feed(self):
-        now = utcnow()
-        videos = []
-        with FuturesSession() as session:
-            resp = session.get(f"https://www.youtube.com/feeds/videos.xml?channel_id={self.cid}").result()
-            rssFeed = feedparser.parse(resp.content)
-            try: published = dateparse(rssFeed.feed.published)
-            except (AttributeError, ValueError): published = now
-            for entry in rssFeed.entries:
-                video = ytngVideo(entry.yt_videoid)
-                video.title = entry.title
-                video.thumbnail = entry.media_thumbnail[0]['url']
-                video.channel_name = entry.author_detail.name
-                video.channel_url = entry.author_detail.href
-                video.cid = entry.yt_channelid
-                # If youtube rss does not have parsed time, generate it. Else set time to 0.
-                try: video.published = dateparse(entry.published)
-                except ValueError: video.published = now
-                # try: video.updated = dateparse(entry.updated)
-                # except (AttributeError, ValueError): video.updated = now
-                video.description = entry.summary_detail.value
-                # video.description = re.sub(r'^https?:\/\/.*[\r\n]*', '', video.description[0:120] + "...",
-                #                            flags=re.MULTILINE)
-                video.view_count = entry.media_statistics['views']
-                video.rating = int(float(entry.media_starrating['average']) / float(entry.media_starrating['max']) * 100)
-                video.badges = []
-                videos.append(video)
-        # return {'published': published, 'recent_videos': videos}
-        self._store_if_absent('joined', published)
+        r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?channel_id={self.id}")
+        self._store_if_absent('joined', r['published'])
         # if not hasattr(self, '_url') or getattr(self, '_url') is None: self.url = rssFeed.feed.author_detail.href
-        self._store_if_absent('name', rssFeed.feed.author_detail.name)
-        return {'recent_videos': videos}
+        self._store_if_absent('name', r['channel_name'])
+        return {'recent_videos': r['videos']}
 
-    @fscache.memoize(timeout=1)
+    @fscache.memoize(timeout=86400 * 7)
     def _get_about_page(self):
         polymer = youtube.channel.get_channel_tab(self.id, tab='about', print_status=False)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'about')
@@ -404,3 +411,88 @@ class ytngChannel:
 
 @fscache.memoize(timeout=86400 * 7)
 def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL}{path}')
+
+
+############################### PLAYLIST ######################################
+@propgroups
+class ytngPlaylist:
+    __propgroups__ = {'page': ['invalid', 'title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
+                      'skip': ['url'],
+                      'feed': ['recent_videos', 'published']}
+
+    __prop_mappers__ = {'avatar': 'map_image_url'}
+
+    __invalid_data__ = {'invalid': True, 'title': '__error__', 'url': '', 'cid': 'NOTFOUND', 'channel_name': '', 'channel_url': '', 'thumbnail': '', 'view_count': 0,
+                        'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--playlist does not exist--',
+                        'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
+
+    def __repr__(self): return f"<ytngPlaylist {self.id}>"
+
+    def __init__(self, id):
+        self.id = id
+        self.url = f'{BASE_URL}/playlist?list={id}'
+        self.invalid = False
+
+    @fscache.memoize(timeout=1)
+    def _get_skip(self): return {'url': f'{BASE_URL}/playlist?list={self.id}'}
+
+    @fscache.memoize(timeout=3600 * 6)
+    def _get_feed(self):
+        r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?playlist_id={self.id}")
+        self._store_if_absent('title', r['title'])
+        self._store_if_absent('cid', r['cid'])
+        self._store_if_absent('channel_name', r['channel_name'])
+        self._store_if_absent('channel_url', r['channel_url'])
+        return {'published': r['published'], 'recent_videos': r['videos']}
+
+    @fscache.memoize(timeout=3600 * 6)
+    def _get_page(self):
+        polymer = youtube.playlist.playlist_first_page(self.id)
+        info = youtube.yt_data_extract.extract_playlist_metadata(polymer)
+
+        if info['error']: return self._return_error('page', info['error'])
+
+        return {'invalid': False, 'title': info['title'], 'thumbnail': info['thumbnail'],
+                'cid': info['author_id'], 'channel_name': info['author'], 'channel_url': info['author_url'],
+                'num_videos': info['video_count'], 'num_video_pages': math.ceil(info['video_count'] / 30),
+                'description': info['description'], 'view_count': info['view_count']}
+
+    @fscache.memoize(timeout=3600 * 6)
+    def get_videos(self, page=1):
+        videos = []
+        if self.invalid: return videos
+        polymer = youtube.playlist.get_videos(self.id, page)
+        info = youtube.yt_data_extract.extract_playlist_info(polymer)
+
+        if info['error'] is not None: raise RuntimeError(info['error'])
+        if info['error']: return []  # FIXME error ytVideo obj
+
+        for item in info['items']:
+            if item['type'] == 'video':
+                video = ytngVideo(item['id'])
+                video.title = item['title']
+                video.thumbnail = item['thumbnail']
+                video.channel_name = item['author']
+                video.channel_url = item['author_url']
+                video.cid = item['author_id']
+                video.timestamp_human = item['time_published']
+                video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
+                video.view_count = item['view_count']
+                video.duration = item['duration']  # TODO live
+                video.badges = item['badges']
+                video._override_from_lists()
+                videos.append(video)
+        return videos
+
+    def get_recent_videos(self, max_n=999, max_days=30):
+        videos = []
+        if self.invalid: return videos
+        now = utcnow()
+        for v in self.recent_videos:  # relies on recent_videos (and, in turn, youtube's rss feed) to be property sorted
+            if (now - v.published).days > max_days: break
+            if len(videos) >= max_n: break
+            videos.append(v)
+        return videos
+
+
+
