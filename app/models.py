@@ -57,13 +57,16 @@ def unique_constructor(scoped_session, hashfunc, queryfunc):
         return cls
 
     return decorate
+
+
 ####################################################################
 
 
-
 user_channel_assoc = db.Table('user_channel_assoc',
-                              db.Column('channel_id', db.Integer, db.ForeignKey('yt_channel.id')),
-                              db.Column('user_id', db.Integer, db.ForeignKey('user.id'))
+                              db.Column('channel_rowid', db.Integer, db.ForeignKey('yt_channel.rowid')),
+                              db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
+                              )  # Association: CHANNEL --followed by--> [USERS]
+
                               )  # Association: CHANNEL --followed by--> [USERS]
 
 
@@ -72,15 +75,18 @@ user_channel_assoc = db.Table('user_channel_assoc',
                     lambda query, username, **kw: query.filter(User.username == username)
                     )
 class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True, unique=True)
+    rowid = db.Column(db.Integer, primary_key=True)
+    def get_id(self): return self.rowid
+    username = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
     password_hash = db.Column(db.String(128))
-    last_seen = db.Column(db.DateTime, default=datetime.utcnow())
+    last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
+
     yt_followed_channels = db.relationship("ytChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
     # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
-    yt_followed_cids = association_proxy('yt_followed_channels', 'cid', creator=lambda cid: ytChannel(cid=cid))
+    yt_followed_cids = association_proxy('yt_followed_channels', 'id', creator=lambda id: ytChannel(id=id))
 
     def __repr__(self): return f'<User {self.username}>'
 
@@ -101,24 +107,24 @@ class User(UserMixin, db.Model):
 
 
 @login.user_loader
-def load_user(id):
-    return User.query.get(int(id))
+def load_user(rowid):
+    return User.query.get(int(rowid))
 
 
 @unique_constructor(db.session,
-                    lambda cid, **kw: cid,
-                    lambda query, cid, **kw: query.filter(ytChannel.cid == cid)
+                    lambda id, **kw: id,
+                    lambda query, id, **kw: query.filter(ytChannel.id == id)
                     )
 class ytChannel(ytngChannel, db.Model):
     __tablename__ = 'yt_channel'
-    id = db.Column(db.Integer, primary_key=True)
-    cid = db.Column(db.String(30), index=True, unique=True)
+    def __repr__(self): return f'<ytChannel {self.id}>'
+    rowid = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
-    # channelName = db.Column(db.String(100))
     followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
-    def __repr__(self): return f'<ytChannel {self.cid}>'
 
 
 
