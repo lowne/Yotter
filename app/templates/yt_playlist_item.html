@@ -1,0 +1,20 @@
+<div class="ui card">
+    <a class="image" href="{{url_for('ytplaylist', pid=playlist.id)}}">
+        <img src="{{playlist.thumbnail}}">
+    </a>
+    <div class="content">
+        <a class="header" href="{{url_for('ytplaylist', pid=playlist.id)}}">{{playlist.title}}</a>
+        <div class="meta">
+          <span class="right floated star">
+              <i class="folder open icon"></i>
+              {{playlist.num_videos}} videos
+          </span>
+          <a class="break-word" href="{{url_for('ytchannel', cid=playlist.cid)}}">
+              <i class="at icon"></i>
+              {{playlist.channel_name}}
+          </a>
+        </div>
+
+    </div>
+</div>
+

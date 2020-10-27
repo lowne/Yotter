@@ -1,0 +1,62 @@
+{% macro admin(obj, what='', user=None) %}
+{% if user.is_admin and not obj.invalid %}
+    <div class="ui orange inverted raised horizontal compact segments">
+    <div class="ui orange inverted raised segment">
+    {% if not obj.is_allowed %}
+        <form action="{{ url_for('yt_admin_action', what=what, where='allowed', action='add', id=obj.id) }}" method="post">
+            <button type="submit" value="Submit" class="ui green button">
+                <i class="check circle outline icon"></i>
+                Allow
+            </button>
+        </form>
+    {% else %}
+        <form action="{{ url_for('yt_admin_action', what=what, where='allowed', action='remove', id=obj.id) }}" method="post">
+            <button type="submit" value="Submit" class="ui button">
+                <i class="check circle outline icon"></i>
+                Unallow
+            </button>
+        </form>
+    {% endif %}
+    </div>
+    {% if what=='channel' %}
+        <div class="ui orange inverted raised segment">
+        {% if not obj.is_blocked %}
+            <form action="{{ url_for('yt_admin_action', what=what, where='blocked', action='add', id=obj.id) }}" method="post">
+                <button type="submit" value="Submit" class="ui black button">
+                    <i class="ban icon"></i>
+                    Block
+                </button>
+            </form>
+        {% else %}
+            <form action="{{ url_for('yt_admin_action', what=what, where='blocked', action='remove', id=obj.id) }}" method="post">
+                <button type="submit" value="Submit" class="ui button">
+                    <i class="ban icon"></i>
+                    Unblock
+                </button>
+            </form>
+        {% endif %}
+        </div>
+    {% endif %}
+    </div>
+{% endif %}
+{% endmacro %}
+
+{% macro user_sub(obj, what='', user=None, subs=None) %}
+{% if user.is_authenticated and not obj.invalid %}
+    {% if not obj.id in subs %}
+        <form action="{{ url_for('yt_user_action', what=what, action='add', id=obj.id) }}" method="post">
+            <button type="submit" value="Submit" class="ui red button">
+                <i class="user icon"></i>
+                {{ 'Subscribe' if what=='channel' else 'Follow'}}
+            </button>
+        </form>
+    {% else %}
+        <form action="{{ url_for('yt_user_action', what=what, action='remove', id=obj.id) }}" method="post">
+            <button type="submit" value="Submit" class="ui red active button">
+                <i class="user icon"></i>
+                {{ 'Unsubscribe' if what=='channel' else 'Unfollow'}}
+            </button>
+        </form>
+    {% endif %}
+{% endif %}
+{% endmacro %}

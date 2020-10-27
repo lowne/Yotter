@@ -39,7 +39,7 @@
             width="1080"
             controls
             buffered
-            poster="{{ video.thumbnail }}"
+            poster="{{video.thumbnail}}"
             preload="none">
             {% for source in video.av_sources %}
                     <source src="{{source.src}}" type="{{source.type}}">

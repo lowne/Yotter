@@ -4,7 +4,7 @@
   <div style="padding: 1.3em;" class="ui one column centered grid">
     <a href="{{ url_for('ytsubscriptions') }}"><div class="ui small red statistic">
         <div class="value">
-            {{ current_user.yt_followed_channels|length }}
+            {{ current_user.yt_followed_channels|length+current_user.yt_followed_playlists|length }}
         </div>
         <div class="label">
             subscriptions
@@ -14,7 +14,7 @@
   {% if videos %}
     <div class="ui centered cards">
       {% for video in videos %}
-        {% include 'yt_videoitem.html' %}
+        {% include 'yt_video_item.html' %}
       {% endfor %}
     </div>
   {% else %}

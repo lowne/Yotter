@@ -82,25 +82,28 @@ def index():
 @app.route('/gallery', methods=['GET'])
 def ytgallery():
     channels = ytChannel.query.filter_by(is_allowed=True).all()
-    return render_template('ytgallery.html', channels=channels)
+    playlists = ytPlaylist.query.filter_by(is_allowed=True).all()
+    return render_template('ytgallery.html', channels=channels, playlists=playlists)
+
 
 @app.route('/feed', methods=['GET', 'POST'])
 @login_required
 def ytfeed():
+    max_days = 365
     # start_time = time.time()
     videos = []
-    for cid in current_user.yt_followed_cids: videos.extend(ytChannel(cid).get_recent_videos(max_n=10, max_days=30))
+    for cid in current_user.yt_followed_cids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
+    for pid in current_user.yt_followed_pids: videos.extend(ytPlaylist(pid).get_recent_videos(max_days=max_days))
     videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
-    return render_template('ytfeed.html', videos=videos)
+    return render_template('ytfeed.html', videos=videos[:50], include_channel_header=True)
 
 
 @app.route('/subscriptions', methods=['GET', 'POST'])
 @login_required
 def ytsubscriptions():
     form = EmptyForm()
-    channels = current_user.yt_followed_channels
-    return render_template('ytsubscriptions.html', form=form, channels=channels)
+    return render_template('ytsubscriptions.html', form=form, channels=current_user.yt_followed_channels, playlists=current_user.yt_followed_playlists)
 
 
 # FIXME
@@ -144,32 +147,6 @@ def ytsearch():
         return render_template('ytsearch.html', form=form, results=False)
 
 
-@app.route('/subscribe/<cid>', methods=['POST'])
-@login_required
-def ytsubscribe(cid):
-    chan = ytChannel(cid=cid)
-    if chan in current_user.yt_followed_channels: flash(f'Already following "{chan.name}"', 'error')
-    elif chan.invalid: flash(f'Channel id "{cid}" is not valid', 'error')
-    else:
-        current_user.yt_followed_channels.add(chan)
-        db.session.commit()
-        flash(f'"{chan.name}" followed!', 'success')
-    return redirect(request.referrer)
-
-
-@app.route('/unsubscribe/<cid>', methods=['POST'])
-@login_required
-def ytunsubscribe(cid):
-    chan = ytChannel(cid=cid)
-    if chan not in current_user.yt_followed_channels: flash(f'Already not following "{chan.name}"', 'error')
-    else:
-        current_user.yt_followed_channels.remove(chan)
-        db.session.commit()
-        if chan.invalid: flash(f'Channel id "{cid}" is not valid', 'error')
-        else: flash(f'"{chan.name}" unfollowed', 'info')
-    return redirect(request.referrer)
-
-
 @app.route('/c/<custom>', methods=['GET'])
 @check_login
 def ytchannel_custom(custom):
@@ -189,27 +166,88 @@ def ytchannel(cid):
 
 
 def _channel_page(request, ch):
-    if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
-        ch = ytChannel('NOTFOUND')._make_error('Channel not found')
+    with db.session.no_autoflush:
+        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
+            ch = ytChannel('NOTFOUND')._make_error('Channel not found')
 
-    form = ChannelForm()
-    button_form = EmptyForm()
+        form = ChannelForm()  # TODO
 
-    page = request.args.get('page', None) or 1
-    sort = request.args.get('sort', None) or 3
+        page = request.args.get('page', 1)
+        sort = request.args.get('sort', 3)
 
-    videos = ch.get_videos(page=page, sort=sort)
+        videos = ch.get_videos(page=page, sort=sort)
 
-    next_page, prev_page = None, None
-    if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
-    if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
-    print(ch.num_video_pages)
-    print(next_page)
-    print(prev_page)
+        next_page, prev_page = None, None
+        if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
+        if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
+        print(ch.num_video_pages)
+        print(next_page)
+        print(prev_page)
 
-    return render_template('ytchannel.html', form=form, btform=button_form, channel=ch, videos=videos,
-                           config=config, next_page=next_page, prev_page=prev_page)
+        return render_template('ytchannel.html', form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
+
+@app.route('/playlist/<pid>', methods=['GET'])
+@check_login
+def ytplaylist(pid):
+    return _playlist_page(request, pid)
+
+
+@app.route('/playlist')
+def playlist_arg():
+    return _playlist_page(request, request.args.get('list', 'NOTFOUND'))
+
+
+def _playlist_page(request, pid):
+    pl = ytPlaylist(pid)
+    ch = ytChannel(pl.cid)
+    with db.session.no_autoflush:
+        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and (not pl.is_allowed or ch.is_allowed)) or ch.is_blocked:  # or pl.is_blocked:
+            pl = ytPlaylist('NOTFOUND')._make_error('Playlist not found')
+            ch = ytChannel('NOTFOUND')._make_error('Channel not found')
+
+
+        form = ChannelForm() # TODO
+
+        page = request.args.get('page', 1)
+        videos = pl.get_videos(page=page)
+
+        next_page, prev_page = None, None
+        if page < pl.num_video_pages: next_page = f'{request.path}?page={page + 1}'
+        if page > 1: prev_page = f'{request.path}?page={page - 1}'
+
+        return render_template('ytplaylist.html', form=form, playlist=pl, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
+
+
+@app.route('/_user/<what>/<action>/<id>', methods=['POST'])
+@login_required
+def yt_user_action(what, action, id):
+    if what == 'channel':
+        ids = current_user.yt_followed_cids
+        # objs = current_user.yt_followed_channels
+        obj = ytChannel(id)
+        name = obj.name
+    elif what == 'playlist':
+        ids = current_user.yt_followed_pids
+        # objs = current_user.yt_followed_playlists
+        obj = ytPlaylist(id)
+        name = obj.title
+    else: return redirect(url_for('error/405'))
+    if action != 'add' and action != 'remove': return redirect(url_for('error/405'))
+    if obj.invalid: flash(f'{what} id "{id}" is not valid', 'error')
+    else:
+        curr = id in ids
+        wanted = action == 'add'
+        if curr == wanted: flash(f'"{name}" already {"" if wanted else "not "} followed', 'error')
+        else:
+            if wanted:
+                ids.add(id)
+                flash(f'"{name} is now followed!', 'success')
+            else:
+                ids.remove(id)
+                flash(f'"{name} is not followed anymore', 'info')
+            db.session.commit()
+    return redirect(request.referrer)
 
 def get_best_urls(urls):
     '''Gets URLS in youtube format (format_id, url, height) and returns best ones for yotter'''
@@ -325,6 +363,7 @@ def yt_admin_action(what, where, action, id):
         name = obj.name
     elif what == 'playlist':
         obj = ytPlaylist(id)
+        name = obj.title
     else: return redirect(url_for('error/405'))
     if action != 'add' and action != 'remove': return redirect(url_for('error/405'))
     print(obj.__dict__)

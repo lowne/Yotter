@@ -24,10 +24,12 @@ def utcnow(): return datetime.datetime.now(datetime.timezone.utc)
 class ATTRFLAG: pass
 
 _idfn = lambda v: v
+_trim_ago = lambda s: s[:-4] if s.endswith(' ago') else s
 
 prop_mappers = {
   'map_image_url': _idfn,
   'map_stream_url': _idfn,
+  'map_trim_ago': _idfn,
 }
 
 def logged(f):
@@ -131,9 +133,10 @@ class ytngVideo:
                       'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos', 'av_sources', 'audio_sources', 'caption_sources'],
                       'from_lists': ['badges'],
                       'ts_human': ['timestamp_human'],
+                      'ch_avatar': ['channel_avatar'],
                       'NYI': ['is_upcoming']}
 
-    __prop_mappers__ = {'thumbnail': 'map_image_url'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url', 'timestamp_human': 'map_trim_ago'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'thumbnail': '', 'channel_name': '', 'channel_url': '', 'cid': 'NOTFOUND',
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'duration': '--', 'is_live': False, 'description': 'Invalid video ID',
@@ -156,6 +159,9 @@ class ytngVideo:
 
     @fscache.memoize(timeout=86400 * 7)
     def _get_ch_id(self): return {'cid': youtube.channel.get_channel_id(self.channel_url)}
+
+    @fscache.memoize(timeout=86400 * 7)
+    def _get_ch_avatar(self): return {'channel_avatar': ytngChannel(self.cid).avatar}
 
     @fscache.memoize(timeout=3600 * 2)
     def _get_page(self):
@@ -265,6 +271,12 @@ class ytngVideo:
     def _get_ts_human(self):
         # TODO 'Scheduled', 'LIVE'
         return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
+
+    @property
+    def duration_human(self):
+        # TODO 'Scheduled', 'LIVE'
+        dur = self.duration
+        return dur[2:] if dur.startswith('0:') else dur
 
     @property
     def views_human(self): return intword(self.view_count)
@@ -382,6 +394,7 @@ class ytngChannel:
                 video.thumbnail = item['thumbnail']
                 video.channel_name = info['channel_name']
                 video.channel_url = info['channel_url']
+                video.channel_avatar = self.avatar
                 video.cid = self.id
                 video.timestamp_human = item['time_published']
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published

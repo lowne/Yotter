@@ -1,0 +1,35 @@
+<div class="ui card" height="800">
+    {% if include_channel_header %}
+    <div class="content" style="height: 3em">
+        <div class="extra content">
+            <a class="break-word" href="{{url_for('ytchannel', cid=video.cid)}}">{{video.channel_name}}</a>
+        </div>
+    </div>
+    {% endif %}
+    <a class="image" height="60" href="{{url_for('ytvideo', id=video.id, _method='GET')}}">
+        <img  style="object-fit: cover; height: 12em" src="{{video.thumbnail}}">
+            {% if video.duration_human %}
+            <div class="bottom right attached ui circular label" style="background-color: #0008; color: white">
+                {{ video.duration_human }}
+            </div>
+            {% endif %}
+    </a>
+    <div class="content" style="height: 5em">
+        <a class="header" href="{{url_for('ytvideo', id=video.id, _method='GET')}}">{{video.title}}</a>
+    </div>
+    <div class="extra content">
+        <span class="left floated">
+        {%if video.duration == "PREMIERING NOW" or video.duration == "LIVE"%}
+            <i class="red circle icon"></i>
+            LIVE
+        {%else%}
+            <i class="calendar icon"></i>
+            {{video.timestamp_human}}
+        {% endif %}
+        </span>
+        <span class="right floated">
+            <i class="eye icon"></i>
+            {{video.views_human}}
+        </span>
+    </div>
+</div>

@@ -1,29 +1,36 @@
 {% extends "base.html" %}
 {% import 'yt_actions.html' as actions %}
 
-
 {% block content %}
 <div class="ui center aligned text container">
     <div class="ui centered vertical segment">
         <h2 class="ui header">
-          <img src="{{channel.avatar}}" class="ui circular image">
-          {{channel.name}}
+          <img src="{{playlist.thumbnail}}" class="ui image">
+          {{playlist.title}}
         </h2>
+        <h4 class="ui header">
+        <a class="ui header" href="{{url_for('ytchannel', cid=channel.id, _method='GET')}}">
+          By <img src="{{channel.avatar}}" class="ui circular image">
+          {{channel.name}}
+        </a>
+        </h4>
     </div>
-    {{ actions.admin(channel, what='channel', user=current_user) }}
+    {{ actions.admin(playlist, what='playlist', user=current_user) }}
+    {% if playlist.description %}
     <div class="ui vertical segment">
-        <p>{{channel.description}}</p>
+        <p>{{playlist.description}}</p>
     </div>
+    {% endif %}
     <div class="ui vertical segment">
         <div class="ui tiny statistic">
             <div class="value">
-                <i class="video icon"></i> {{channel.num_videos}}
+                <i class="video icon"></i> {{playlist.num_videos}}
             </div>
             <div class="label">
                 Videos
             </div>
         </div>
-        {{ actions.user_sub(channel, what='channel', user=current_user, subs=current_user.yt_followed_cids) }}
+    {{ actions.user_sub(playlist, what='playlist', user=current_user, subs=current_user.yt_followed_pids) }}
     </div>
 </div>
 

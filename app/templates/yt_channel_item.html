@@ -1,0 +1,15 @@
+<div class="ui card">
+    <a class="image" href="{{url_for('ytchannel', cid=channel.id)}}">
+        <img src="{{channel.avatar}}">
+    </a>
+    <div class="content">
+        <a class="header" href="{{url_for('ytchannel', cid=channel.id)}}">{{channel.name}}</a>
+        <div class="meta">
+          <span class="right floated star">
+              <i class="folder open icon"></i>
+              {{channel.num_videos}} videos
+          </span>
+        </div>
+    </div>
+</div>
+
