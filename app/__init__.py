@@ -21,12 +21,15 @@ class KeyCache(Cache):
             # def keyfn(*kargs, **kkwargs):
             #     return cached.make_cache_key(f, *kargs, **kkwargs)
             # cached.get_key = keyfn
+
             def set_cache(value, *sargs, **skwargs):
                 self.cache.set(cached.make_cache_key(cached.uncached, *sargs, **skwargs), value, timeout=cached.cache_timeout)
-            cached.set_cache=set_cache
+            cached.set_cache = set_cache
+
             def del_cache(*dargs, **dkwargs):
                 self.cache.delete(cached.make_cache_key(cached.uncached, *dargs, **dkwargs))
-            cached.del_cache=del_cache
+            cached.del_cache = del_cache
+
             return cached
         return decorator
 
@@ -36,7 +39,11 @@ class KeyCache(Cache):
     #     key = fn.make_cache_key(fn, *args, **kwargs)
     #     return self.cache.set(key, value, timeout=fn.cache_timeout)
 
-cache = KeyCache(app,config={'CACHE_TYPE': 'simple'})
-fscache = KeyCache(app,config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': 'app/cache', 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
+
+cache = Cache(app, config={'CACHE_TYPE': 'simple', 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
+
+
+fscache = KeyCache(app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': 'app/cache', 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
+
 
 from app import routes, models, errors

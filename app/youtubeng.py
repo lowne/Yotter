@@ -84,7 +84,8 @@ def propgroups(cl):
 
     def store_if_absent(self, prop, val):
         if getattr(self, f'_{prop}', ATTRFLAG) is ATTRFLAG: setattr(self, prop, val)
-    cl._store_if_absent = store_if_absent
+    cl.addprop = store_if_absent
+    cl.setprop = setattr
 
     def return_error(self, grp, error):
         resp, attrs, grpkeys = {}, {}, self.__propgroups__.get(grp, [])
@@ -156,13 +157,14 @@ def fix_ytlocal_url(url):
     return url[1:] if url.startswith('/http') else url
 
 ############################### VIDEO ######################################
-@unique_constructor(_idfn)
+@unique_constructor(hash)
 @propgroups
 class ytngVideo:
-    __propgroups__ = {'oembed': ['invalid', 'title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
+    __propgroups__ = {'oembed': ['title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
                       'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos', 'av_sources', 'audio_sources', 'caption_sources'],
                       'from_lists': ['badges'],
                       'ts_human': ['timestamp_human'],
+                      'dur_human': ['duration_human'],
                       'ch_avatar': ['channel_avatar'],
                       'NYI': ['is_upcoming']}
 
@@ -176,31 +178,31 @@ class ytngVideo:
     def __repr__(self): return f"<ytngVideo {self.id}>"
 
     def __init__(self, id):
+        print(f'***new ytngvideo {id}')
         self.id = id
         self.invalid = False
 
     @fscache.memoize(timeout=86400)
+    @logged
     def _get_oembed(self):
         with FuturesSession() as session:
             resp = session.get(f"https://www.youtube.com/oembed?format=json&url=http%3A%2F%2Fyoutu.be%2F{self.id}").result()
             if resp.status_code != 200: return self._return_error('oembed', resp.text)
             info = json.loads(resp.content)
-            return {'invalid': False, 'title': info['title'], 'thumbnail': info['thumbnail_url'], 'channel_name': info['author_name'], 'channel_url': info['author_url']}
+            return {'title': info['title'], 'thumbnail': info['thumbnail_url'], 'channel_name': info['author_name'], 'channel_url': info['author_url']}
 
     @fscache.memoize(timeout=86400 * 7)
+    @logged
     def _get_ch_id(self): return {'cid': youtube.channel.get_channel_id(self.channel_url)}
 
-    @fscache.memoize(timeout=86400 * 7)
+    @cache.memoize(timeout=86400)
+    @logged
     def _get_ch_avatar(self): return {'channel_avatar': ytngChannel(self.cid).avatar}
 
     @fscache.memoize(timeout=3600 * 2)
+    @logged
     def _get_page(self):
         info = youtube.watch.extract_info(self.id, False, playlist_id=None, index=None)
-
-        print(json.dumps(info,indent=2))
-        # with open('samples/yt-local.watch.extract_info.json','w') as f:
-        #     f.write(json.dumps(info, indent=2))
-
         error = info['playability_error'] or info['error']
         if error: return self._return_error('page', error)
 
@@ -242,32 +244,41 @@ class ytngVideo:
         votes = likes + dislikes
         if votes > 0: rating = int(likes / (votes) * 100)
         is_live = info['live']
-        if is_live: duration = 'LIVE'
-        else: duration = str(datetime.timedelta(seconds=info['duration']))
-
+        if is_live:
+            duration = -1
+            duration_human = 'LIVE'
+            self.setprop('timestamp_human', 'LIVE')
+            self._override_ts_human()
+        else:
+            duration = info['duration']
+            dur = str(datetime.timedelta(duration))
+            duration_human = dur[2:] if dur.startswith('0:') else dur
+        self.setprop('duration_human', duration_human)
+        self._override_dur_human()
         related = []
         for item in info['related_videos']:
-            if item['type'] == 'video':
+            if not item['error'] and item['type'] == 'video':
                 video = ytngVideo(item['id'])
-                video.title = item['title']
-                video.thumbnail = item['thumbnail']
-                video.channel_name = info['author']
-                video.channel_url = info['author_url']
-                video.cid = info['author_id']
-                video.timestamp_human = item['time_published']
+                video.setprop('title', item['title'])
+                video.setprop('thumbnail', item['thumbnail'])
+                video.setprop('channel_name', item['author'])
+                video.setprop('channel_url', item['author_url'])
+                video.setprop('cid', item['author_id'])
+                video.setprop('timestamp_human', item['time_published'])
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
-                video.view_count = item['view_count']
-                video.duration = item['duration']  # TODO live
-                video.badges = item['badges']
+                video.setprop('view_count', item['view_count'])
+                video.setprop('duration_human', item['duration'])
+                video._override_dur_human()
+                video.setprop('badges', item['badges'])
                 video._override_from_lists()
                 related.append(video)
 
         # override everything else
         self._del_ts_human()  # we have .published again
-        self.title = info['title']
-        self.channel_name = info['author']
-        self.channel_url = info['author_url']
-        self.cid = info['author_id']
+        self.setprop('title', ['title'])
+        self.setprop('channel_name', info['author'])
+        self.setprop('channel_url', info['author_url'])
+        self.setprop('cid', info['author_id'])
         return {
             'published': dateparse(info['time_published']),
             'duration': duration,
@@ -286,6 +297,7 @@ class ytngVideo:
     @fscache.memoize(timeout=1)
     def _get_from_lists(self): return {'badges': []}
 
+    # TODO
     def get_comments(self, sort=0, offset=0):
         comments = youtube.comments.video_comments(self.id, sort=0, offset=0, lc='', secret_key='')
         if comments is None: return []
@@ -294,19 +306,13 @@ class ytngVideo:
             cmnt['thumbnail'] = prop_mappers['map_image_url'](cmnt['thumbnail'])
         return comments
 
-    @fscache.memoize(timeout=1)
+    @cache.memoize(timeout=1)
     def _get_NYI(self): pass
 
     @fscache.memoize(timeout=1)
     def _get_ts_human(self):
         # TODO 'Scheduled', 'LIVE'
         return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
-
-    @property
-    def duration_human(self):
-        # TODO 'Scheduled', 'LIVE'
-        dur = self.duration
-        return dur[2:] if dur.startswith('0:') else dur
 
     @property
     def views_human(self): return intword(self.view_count)
@@ -319,36 +325,37 @@ def _get_atom_feed(url):
     videos = []
     with FuturesSession() as session:
         resp = session.get(url).result()
+        if resp.status == 404: return None
         rssFeed = feedparser.parse(resp.content)
         try: published = dateparse(rssFeed.feed.published)
         except (AttributeError, ValueError): published = now
         for entry in rssFeed.entries:
             video = ytngVideo(entry.yt_videoid)
-            video._store_if_absent('duration', '')
-            video.title = entry.title
-            video.thumbnail = entry.media_thumbnail[0]['url']
-            video.channel_name = entry.author_detail.name
-            video.channel_url = entry.author_detail.href
-            video.cid = entry.yt_channelid
+            video.addprop('duration', '')
+            video.setprop('title', entry.title)
+            video.setprop('thumbnail', entry.media_thumbnail[0]['url'])
+            video.setprop('channel_name', entry.author_detail.name)
+            video.setprop('channel_url', entry.author_detail.href)
+            video.setprop('cid', entry.yt_channelid)
             # If youtube rss does not have parsed time, generate it. Else set time to 0.
-            try: video.published = dateparse(entry.published)
-            except ValueError: video.published = now
+            try: video.setprop('published', dateparse(entry.published))
+            except ValueError: video.addprop('published', now)
             # try: video.updated = dateparse(entry.updated)
             # except (AttributeError, ValueError): video.updated = now
-            video.description = entry.summary_detail.value
+            video.setprop('description', entry.summary_detail.value)
             # video.description = re.sub(r'^https?:\/\/.*[\r\n]*', '', video.description[0:120] + "...",
             #                            flags=re.MULTILINE)
-            video.view_count = entry.media_statistics['views']
-            video.rating = int(float(entry.media_starrating['average']) / float(entry.media_starrating['max']) * 100)
+            video.addprop('view_count', entry.media_statistics['views'])
+            video.addprop('rating', int(float(entry.media_starrating['average']) / float(entry.media_starrating['max']) * 100))
             videos.append(video)
     return {'title': rssFeed.feed.title, 'cid': rssFeed.feed.yt_channelid, 'channel_name': rssFeed.feed.author_detail.name, 'channel_url': rssFeed.feed.author_detail.href,
             'published': published, 'videos': videos}
 
 
-@unique_constructor(_idfn)
+@unique_constructor(hash)
 @propgroups
 class ytngChannel:
-    __propgroups__ = {'about_page': ['invalid', 'name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
+    __propgroups__ = {'about_page': ['name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
 
@@ -365,6 +372,7 @@ class ytngChannel:
         self.url = f'{BASE_URL}/channel/{id}'
         self.invalid = False
 
+    # TODO remove?
     @fscache.memoize(timeout=86400 * 7)
     def _get_from_search(self):
         # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
@@ -383,23 +391,23 @@ class ytngChannel:
     @fscache.memoize(timeout=3600)
     def _get_feed(self):
         r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?channel_id={self.id}")
-        self._store_if_absent('joined', r['published'])
-        # if not hasattr(self, '_url') or getattr(self, '_url') is None: self.url = rssFeed.feed.author_detail.href
-        self._store_if_absent('name', r['channel_name'])
+        if not r: return self._return_error('feed', 'channel id not found')
+        self.addprop('joined', r['published'])
+        self.addprop('url', r['channel_url'])
+        self.addprop('name', r['channel_name'])
         return {'recent_videos': r['videos']}
 
     @fscache.memoize(timeout=86400 * 7)
     def _get_about_page(self):
         polymer = youtube.channel.get_channel_tab(self.id, tab='about', print_status=False)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'about')
-
         # if info['error'] == 'This channel does not exist': return YT_CHANNEL_INVALID_DATA
         # elif info['error'] is not None: raise RuntimeError(info['error'])
         if info['error']: return self._return_error('about_page', info['error'])
-        # links is a list of tuples (text, url)
-        joined = dateparse(info['date_joined'])
 
-        return {'invalid': False, 'name': info['channel_name'], 'url': info['channel_url'], 'avatar': info['avatar'],
+        joined = dateparse(info['date_joined'])
+        # links is a list of tuples (text, url)
+        return {'name': info['channel_name'], 'url': info['channel_url'], 'avatar': info['avatar'],
                 'sub_count': info['approx_subscriber_count'], 'joined': joined,
                 'description': info['description'], 'view_count': info['view_count'], 'links': info['links']}
 
@@ -419,22 +427,22 @@ class ytngChannel:
         if info['error'] is not None: raise RuntimeError(info['error'])  # FIXME error ytVideo obj
 
         for item in info['items']:
-            if item['type'] == 'video':
+            if not item['error'] and item['type'] == 'video':
                 video = ytngVideo(item['id'])
-                video.title = item['title']
-                video.thumbnail = item['thumbnail']
-                video.channel_name = info['channel_name']
-                video.channel_url = info['channel_url']
-                video.channel_avatar = self.avatar
-                video.cid = self.id
-                video.timestamp_human = item['time_published']
+                video.setprop('title', item['title'])
+                video.setprop('thumbnail', item['thumbnail'])
+                video.setprop('channel_name', info['channel_name'])
+                video.setprop('channel_url', info['channel_url'])
+                video.setprop('channel_avatar', self.avatar)
+                video.setprop('cid', self.id)
+                video.setprop('timestamp_human', item['time_published'])
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
-                video.view_count = item['view_count']
-                video.duration = item['duration']  # TODO live
-                video.badges = item['badges']
+                video.setprop('view_count', item['view_count'])
+                video.setprop('duration_human', item['duration'])
+                video._override_dur_human()
+                video.setprop('badges', item['badges'])
                 video._override_from_lists()
                 videos.append(video)
-        return videos
 
     def get_recent_videos(self, max_n=999, max_days=30):
         videos = []
@@ -458,10 +466,10 @@ def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL
 
 
 ############################### PLAYLIST ######################################
-@unique_constructor(_idfn)
+@unique_constructor(hash)
 @propgroups
 class ytngPlaylist:
-    __propgroups__ = {'page': ['invalid', 'title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
+    __propgroups__ = {'page': ['title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
                       'skip': ['url'],
                       'feed': ['recent_videos', 'published']}
 
@@ -478,16 +486,17 @@ class ytngPlaylist:
         self.url = f'{BASE_URL}/playlist?list={id}'
         self.invalid = False
 
-    @fscache.memoize(timeout=1)
+    @cache.memoize(timeout=1)
     def _get_skip(self): return {'url': f'{BASE_URL}/playlist?list={self.id}'}
 
     @fscache.memoize(timeout=3600 * 6)
     def _get_feed(self):
         r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?playlist_id={self.id}")
-        self._store_if_absent('title', r['title'])
-        self._store_if_absent('cid', r['cid'])
-        self._store_if_absent('channel_name', r['channel_name'])
-        self._store_if_absent('channel_url', r['channel_url'])
+        if not r: return self._return_error('feed', 'playlist id not found')
+        self.addprop('title', r['title'])
+        self.addprop('cid', r['cid'])
+        self.addprop('channel_name', r['channel_name'])
+        self.addprop('channel_url', r['channel_url'])
         return {'published': r['published'], 'recent_videos': r['videos']}
 
     @fscache.memoize(timeout=3600 * 6)
@@ -497,9 +506,9 @@ class ytngPlaylist:
 
         if info['error']: return self._return_error('page', info['error'])
 
-        return {'invalid': False, 'title': info['title'], 'thumbnail': info['thumbnail'],
+        return {'title': info['title'], 'thumbnail': info['thumbnail'],
                 'cid': info['author_id'], 'channel_name': info['author'], 'channel_url': info['author_url'],
-                'num_videos': info['video_count'], 'num_video_pages': math.ceil(info['video_count'] / 30),
+                'num_videos': info['video_count'], 'num_video_pages': math.ceil(info['video_count'] / 20),
                 'description': info['description'], 'view_count': info['view_count']}
 
     @fscache.memoize(timeout=3600 * 6)
@@ -515,16 +524,17 @@ class ytngPlaylist:
         for item in info['items']:
             if item['type'] == 'video':
                 video = ytngVideo(item['id'])
-                video.title = item['title']
-                video.thumbnail = item['thumbnail']
-                video.channel_name = item['author']
-                video.channel_url = item['author_url']
-                video.cid = item['author_id']
-                video.timestamp_human = item['time_published']
+                video.setprop('title', item['title'])
+                video.setprop('thumbnail', item['thumbnail'])
+                video.setprop('channel_name', item['author'])
+                video.setprop('channel_url', item['author_url'])
+                video.setprop('cid', item['author_id'])
+                video.setprop('timestamp_human', item['time_published'])
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
-                video.view_count = item['view_count']
-                video.duration = item['duration']  # TODO live
-                video.badges = item['badges']
+                video.setprop('view_count', item['view_count'])
+                video.setprop('duration_human', item['duration'])
+                video._override_dur_human()
+                video.setprop('badges', item['badges'])
                 video._override_from_lists()
                 videos.append(video)
         return videos
