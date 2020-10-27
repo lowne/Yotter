@@ -120,10 +120,6 @@ class ytChannel(ytngChannel, db.Model):
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
     def __repr__(self): return f'<ytChannel {self.cid}>'
 
-    @classmethod
-    def for_urlpath(cls, path):
-        o = ytngChannel.for_urlpath(path)
-        return ytChannel(o.cid, **{k: getattr(o, k) for k in ytngChannel.__propnames__ if hasattr(o, f'_{k}')})
 
 
 class ytVideo(ytngVideo):

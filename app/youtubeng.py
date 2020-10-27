@@ -18,17 +18,23 @@ sys.path.append(__ytl_dir)
 import youtube
 
 
-def utcnow():
-    return datetime.datetime.now(datetime.timezone.utc)
+def utcnow(): return datetime.datetime.now(datetime.timezone.utc)
 
+class ATTRFLAG: pass
 
-ATTRFLAG = dict()
+_idfn = lambda v: v
 
 prop_mappers = {
-  'map_image_url': lambda u: u,
-  'map_stream_url': lambda u: u,
+  'map_image_url': _idfn,
+  'map_stream_url': _idfn,
 }
 
+def logged(f):
+    @wraps(f)
+    def wrapped(*args,**kwargs):
+        print(f'.run {f}({args},{kwargs})')
+        return f(*args,**kwargs)
+    return wrapped
 # class decorator
 def propgroups(cl):
     propnames = [prop for props in cl.__propgroups__.values() for prop in props]
@@ -45,7 +51,7 @@ def propgroups(cl):
     cl.__init__ = init
 
     def store_if_absent(self, prop, val):
-        if getattr(self, f'_{prop}', ATTRFLAG) is not ATTRFLAG: setattr(self, prop, val)
+        if getattr(self, f'_{prop}', ATTRFLAG) is ATTRFLAG: setattr(self, prop, val)
     cl._store_if_absent = store_if_absent
 
     def return_error(self, grp, error):
@@ -86,25 +92,22 @@ def propgroups(cl):
         setattr(cl, f'_del_{grp}', delcache)
 
         for prop in props:
-            def pget(self, grp=grp, prop=prop):
+            mapper_key = cl.__prop_mappers__.get(prop, None)
+
+            def pget(self, grp=grp, prop=prop, mapper_key=mapper_key):
                 ivar = f'_{prop}'
+                mapper = prop_mappers.get(mapper_key, _idfn)
                 if not hasattr(self, ivar):  # first access (or invalidated) - rebuild cache
-                    v = getattr(self, f'_get_{grp}')()[prop]
+                    v = mapper(getattr(self, f'_get_{grp}')()[prop])
                     setattr(self, ivar, v)
                     return v
-                return getattr(self, ivar)  # return cached result, including None
+                return mapper(getattr(self, ivar))  # return cached result, including None
 
             # if set to None, it'll be cached - prop is deemed irrelevant foreverafter
             # NOTE: if this changes (e.g. in config), persisted cache must be cleared
             def pset(self, v, grp=grp, prop=prop):
                 setattr(self, f'_{prop}', v)
                 getattr(self, f'_set_{grp}')()
-
-            mapper_key = cl.__prop_mappers__.get(prop, None)
-            if mapper_key:
-                def pset(self, v, grp=grp, prop=prop, mapper_key=mapper_key):
-                    setattr(self, f'_{prop}', prop_mappers[mapper_key](v))
-                    getattr(self, f'_set_{grp}')()
 
             def pdel(self, grp=grp, prop=prop):  # invalidate the cache and rebuild on next access
                 delattr(self, prop)
@@ -119,7 +122,7 @@ BASE_URL = 'https://www.youtube.com'
 
 def fix_ytlocal_url(url):
     return url[1:] if url.startswith('/http') else url
-
+############################### VIDEO ######################################
 
 @propgroups
 class ytngVideo:
@@ -137,10 +140,10 @@ class ytngVideo:
                         'badges': [], 'timestamp_human': 'never'}
 
     def __repr__(self): return f"<ytngVideo {self.id}>"
-    # def __hash__(self): return hash(self.id)
 
     def __init__(self, id):
         self.id = id
+        self.invalid = False
 
     @fscache.memoize(timeout=86400)
     def _get_oembed(self):
@@ -268,10 +271,6 @@ class ytngVideo:
 
 @propgroups
 class ytngChannel:
-    # all_videos should prolly be a method with page
-    # __propgroups__ = {'from_search': ['name', 'avatar', 'sub_count', 'invalid'], 'feed': ['recent_videos'],
-    #                   'about_page': ['joined', 'descrption', 'view_count', 'links'], 'NYI': ['playlists', 'all_videos']}
-
     __propgroups__ = {'about_page': ['invalid', 'name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
                       'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
@@ -283,18 +282,18 @@ class ytngChannel:
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
     def __repr__(self): return f"<ytngChannel {self.id}>"
-    # def __hash__(self): return hash(repr(self))
 
-    def __init__(self, cid):
-        self.cid = cid
-        self.url = f'{BASE_URL}/channel/{cid}'
+    def __init__(self, id):
+        self.id = id
+        self.url = f'{BASE_URL}/channel/{id}'
+        self.invalid = False
 
     @fscache.memoize(timeout=86400 * 7)
     def _get_from_search(self):
         # https://github.com/pluja/youtube_search-fork/blob/master/youtube_search/__init__.py#L60
-        try: info = YoutubeSearch.channelInfo(self.cid, includeVideos=False)[0]
+        try: info = YoutubeSearch.channelInfo(self.id, includeVideos=False)[0]
         except KeyError as ke:
-            print("KeyError: {}: channel '{}' could not be found".format(ke, self.cid))
+            print("KeyError: {}: channel '{}' could not be found".format(ke, self.id))
             info = {
                 # 'id': id,
                 'name': '--invalid channel id--',
@@ -341,7 +340,7 @@ class ytngChannel:
 
     @fscache.memoize(timeout=1)
     def _get_about_page(self):
-        polymer = youtube.channel.get_channel_tab(self.cid, tab='about', print_status=False)
+        polymer = youtube.channel.get_channel_tab(self.id, tab='about', print_status=False)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'about')
 
         # if info['error'] == 'This channel does not exist': return YT_CHANNEL_INVALID_DATA
@@ -354,21 +353,20 @@ class ytngChannel:
                 'sub_count': info['approx_subscriber_count'], 'joined': joined,
                 'description': info['description'], 'view_count': info['view_count'], 'links': info['links']}
 
-    @fscache.memoize(timeout=60 * 30)
+    @fscache.memoize(timeout=3600)
     def _get_mf_numvids(self):
-        numvids = youtube.channel.get_number_of_videos_channel(self.cid)
+        numvids = youtube.channel.get_number_of_videos_channel(self.id)
         return {'num_videos': numvids, 'num_video_pages': math.ceil(numvids / 30)}
 
+    @fscache.memoize(timeout=3600)
     def get_videos(self, page=1, sort=3):
         videos = []
         if self.invalid: return videos
         view = 1  # not sure what this this
-        polymer = youtube.channel.get_channel_tab(self.cid, page, sort, 'videos', view)
+        polymer = youtube.channel.get_channel_tab(self.id, page, sort, 'videos', view)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'videos')
 
-        if info['error'] is not None: raise RuntimeError(info['error'])
-
-        print(json.dumps(info, indent=2))
+        if info['error'] is not None: raise RuntimeError(info['error'])  # FIXME error ytVideo obj
 
         for item in info['items']:
             if item['type'] == 'video':
@@ -377,7 +375,7 @@ class ytngChannel:
                 video.thumbnail = item['thumbnail']
                 video.channel_name = info['channel_name']
                 video.channel_url = info['channel_url']
-                video.cid = self.cid
+                video.cid = self.id
                 video.timestamp_human = item['time_published']
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
                 video.view_count = item['view_count']
@@ -400,8 +398,8 @@ class ytngChannel:
     @classmethod
     def for_urlpath(cls, path):
         cid = get_cid_for_urlpath(path)
-        if cid is not None: return ytngChannel(cid, url=f'{BASE_URL}{path}')
-        return ytngChannel('NOTFOUND')._make_error(f"invalid path '{path}'")
+        if cid is not None: return cls(cid, url=f'{BASE_URL}{path}')
+        return cls('NOTFOUND')._make_error(f"invalid path '{path}'")
 
 
 @fscache.memoize(timeout=86400 * 7)

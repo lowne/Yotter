@@ -34,6 +34,7 @@ config = yotterconfig.get_config()
 
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
 
+
 if config.external_proxy:
     def ext_proxy_mapper(url):
         parsed = urllib.parse.urlparse(url)._asdict()
@@ -45,6 +46,7 @@ if config.external_proxy:
     if config.proxy_videos: prop_mappers['map_stream_url'] = ext_proxy_mapper
 else:
     if config.proxy_images: prop_mappers['map_image_url'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
+    else: prop_mappers['map_image_url'] = _fix_thumbnail_hq
     if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
 
 
@@ -100,6 +102,7 @@ def ytsubscriptions():
     return render_template('ytsubscriptions.html', form=form, channels=channels)
 
 
+# FIXME
 @app.route('/search', methods=['GET', 'POST'])
 @check_login
 def ytsearch():
