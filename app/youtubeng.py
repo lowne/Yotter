@@ -165,15 +165,18 @@ def propgroups(cl):
 
         for prop in props:
             mapper_key = cl.__prop_mappers__.get(prop, None)
+            if mapper_key:
+                def pgetmapped(self, grp=grp, prop=prop, mapper_key=mapper_key):
+                    ivar = f'_{prop}'
+                    if not hasattr(self, ivar):  # first access (or invalidated) - rebuild cache
+                        setattr(self, ivar, getattr(self, f'_get_{grp}')()[prop])
+                    return prop_mappers[mapper_key](getattr(self, ivar))  # return cached result, including None
 
-            def pget(self, grp=grp, prop=prop, mapper_key=mapper_key):
+            def pget(self, grp=grp, prop=prop):
                 ivar = f'_{prop}'
-                mapper = prop_mappers.get(mapper_key, _idfn)
                 if not hasattr(self, ivar):  # first access (or invalidated) - rebuild cache
-                    v = mapper(getattr(self, f'_get_{grp}')()[prop])
-                    setattr(self, ivar, v)
-                    return v
-                return mapper(getattr(self, ivar))  # return cached result, including None
+                    setattr(self, ivar, getattr(self, f'_get_{grp}')()[prop])
+                return getattr(self, ivar)  # return cached result, including None
 
             # if set to None, it'll be cached - prop is deemed irrelevant foreverafter
             # NOTE: if this changes (e.g. in config), persisted cache must be cleared
@@ -185,7 +188,10 @@ def propgroups(cl):
                 delattr(self, prop)
                 getattr(self, f'_del_{grp}')()
 
-            setattr(cl, prop, property(pget, pset, pdel, f'property {prop} in group {grp}'))
+            if mapper_key:
+                setattr(cl, prop, property(pgetmapped, pset, pdel, f'property {prop} in group {grp}'))
+                setattr(cl, f'{prop}_unmapped', property(pget))
+            else: setattr(cl, prop, property(pget, pset, pdel, f'property {prop} in group {grp}'))
     return cl
 
 
@@ -207,7 +213,7 @@ class ytngVideo:
                       'ch_avatar': ['channel_avatar'],
                       'NYI': ['is_upcoming']}
 
-    __prop_mappers__ = {'thumbnail': 'map_image_url', 'timestamp_human': 'map_trim_ago'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url', 'channel_avatar': 'map_image_url', 'timestamp_human': 'map_trim_ago'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'thumbnail': '', 'channel_name': '', 'channel_url': '', 'cid': 'NOTFOUND',
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'duration': '--', 'is_live': False, 'description': 'Invalid video ID',
@@ -228,7 +234,7 @@ class ytngVideo:
             resp = session.get(f"https://www.youtube.com/oembed?format=json&url=http%3A%2F%2Fyoutu.be%2F{self.id}").result()
             if resp.status_code != 200: return self._return_error('oembed', resp.text)
             info = json.loads(resp.content)
-            return {'title': info['title'], 'thumbnail': prop_mappers['map_image_url'](info['thumbnail_url']), 'channel_name': info['author_name'], 'channel_url': info['author_url']}
+            return {'title': info['title'], 'thumbnail': info['thumbnail_url'], 'channel_name': info['author_name'], 'channel_url': info['author_url']}
 
     @fscache.memoize(timeout=86400 * 7)
     @logged
@@ -479,7 +485,7 @@ class ytngChannel:
                 video.setprop('thumbnail', item['thumbnail'])
                 video.setprop('channel_name', info['channel_name'])
                 video.setprop('channel_url', info['channel_url'])
-                video.setprop('channel_avatar', self.avatar)
+                video.setprop('channel_avatar', self.avatar_unmapped)
                 video.setprop('cid', self.id)
                 video.setprop('timestamp_human', item['time_published'])
                 video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
@@ -517,9 +523,10 @@ def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL
 class ytngPlaylist:
     __propgroups__ = {'page': ['title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
                       'skip': ['url'],
+                      'ch_avatar': ['channel_avatar'],
                       'feed': ['recent_videos', 'published']}
 
-    __prop_mappers__ = {'avatar': 'map_image_url'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'url': '', 'cid': 'NOTFOUND', 'channel_name': '', 'channel_url': '', 'thumbnail': '', 'view_count': 0,
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--playlist does not exist--',
@@ -559,6 +566,10 @@ class ytngPlaylist:
                 'cid': info['author_id'], 'channel_name': info['author'], 'channel_url': info['author_url'],
                 'num_videos': info['video_count'], 'num_video_pages': math.ceil(info['video_count'] / 20),
                 'description': info['description'], 'view_count': info['view_count']}
+
+    @cache.memoize(timeout=86400)
+    @logged
+    def _get_ch_avatar(self): return {'channel_avatar': ytChannel(self.cid).avatar_unmapped}
 
     @fscache.memoize(timeout=3600 * 6)
     @logged
