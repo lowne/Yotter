@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import json
 import re
 import urllib
@@ -22,6 +22,8 @@ from app.youtubeng import prop_mappers, logged
 # FIXME deprecated
 from youtube import search as yts
 
+
+utcnow = datetime.utcnow
 
 ##########################
 #         Config         #
@@ -430,27 +432,27 @@ def logout():
 
 
 @app.route('/settings')
-@login_required
-@cache.cached(timeout=50, key_prefix='settings')
 def settings():
-    active = 0
-    users = db.session.query(User).all()
-    for u in users:
-        if u.last_seen == None:
-            u.set_last_seen()
-            db.session.commit()
-        else:
-            t = datetime.datetime.utcnow() - u.last_seen
-            s = t.total_seconds()
-            m = s / 60
-            if m < 25:
-                active = active + 1
-
-    instanceInfo = {
-        "totalUsers": db.session.query(User).count(),
-        "active": active,
-    }
-    return render_template('settings.html', info=instanceInfo, config=config, admin=current_user.is_admin)
+    if not current_user.is_authenticated: return app.login_manager.unauthorized()
+    if current_user.is_admin: pass
+    if not current_user.is_restricted:
+        with db.session.no_autoflush:
+            q_users = db.session.query(User)
+            users, now, n_active = q_users.all(), utcnow(), 0
+            for u in users:
+                s = (now - u.last_seen).total_seconds()
+                if s < (25 * 60): n_active = n_active + 1
+            info = {
+                "server_name": config.server_name,
+                "server_location": config.server_location,
+                "total_users": q_users.count(),
+                "active_users": n_active,
+                "max_users": max(q_users.count(), config.max_instance_users),
+                "registrations_allowed": registrations_allowed(),
+                "donate_url": config.donate_url,
+                "donate_yotter": config.donate_yotter,
+            }
+    return render_template('settings.html', title='Settings', info=info, admin=current_user.is_admin)
 
 
 '''@app.route('/clear_inactive_users/<phash>')
@@ -475,87 +477,60 @@ def clear_inactive_users(phash):
     return redirect(request.referrer)'''
 
 
-@app.route('/export')
-@login_required
 # Export data into a JSON file. Later you can import the data.
-def export():
-    a = exportData()
-    if a:
-        return send_from_directory('.', 'data_export.json', as_attachment=True)
-    else:
-        return redirect(url_for('error/405'))
-
-
-def exportData():
-    cids = current_user.yt_followed_channel_ids
-    data = {'username': current_user.username, 'description': 'list of followed YouTube channels'}
-    data['youtube'] = []
-
-    for cid in cids:
-        data.append({
-            'channelId': cid
-        })
-
-    try:
-        with open('app/data_export.json', 'w') as outfile:
-            json.dump(data, outfile)
-        return True
-    except:
-        return False
-
-
-@app.route('/importdata', methods=['GET', 'POST'])
+@app.route('/settings/export', methods=['POST'])
 @login_required
-def importdata():
-    if request.method == 'POST':
-        # check if the post request has the file part
-        if 'file' not in request.files:
-            flash('No file part')
-            return redirect(request.referrer)
-        file = request.files['file']
-        # if user does not select file, browser also
-        # submit an empty part without filename
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.referrer)
-        else:
-            option = request.form['import_format']
-            if option == 'yotter':
-                importYotterSubscriptions(file)
-            elif option == 'youtube':
-                importYoutubeSubscriptions(file)
-            return redirect(request.referrer)
+def export_user_data():
+    # cids = current_user.yt_followed_channel_ids
+    data = {'description': 'Yotter data export', 'username': current_user.username,
+            'followed_channel_ids': list(current_user.yt_followed_channel_ids),
+            'followed_playlist_ids': list(current_user.yt_followed_playlist_ids)}
+    filename = 'yotter_data_export.json'
+    try:
+        with open(f'app/{filename}', 'w') as outfile:
+            json.dump(data, outfile)
+        return send_from_directory('.', filename, as_attachment=True)
+    except: return redir_error(500)
 
+@app.route('/settings/import', methods=['GET', 'POST'])
+@login_required
+def import_user_data():
+    if 'file' not in request.files:  # check if the post request has the file part
+        flash('No file sent')
+        return redirect(url_for('settings'))
+    file = request.files['file']
+    if file.filename == '':  # if user does not select file, browser also submit an empty part without filename
+        flash('No selected file')
+        return redirect(url_for('settings'))
+    content = file.read().decode()
+    option = request.form['import_format']
+    if option == 'yotter':
+        data = json.loads(content)
+        for cid in data['followed_channel_ids']: current_user.yt_followed_channel_ids.add(cid)
+        for pid in data['followed_playlist_ids']: current_user.yt_followed_playlist_ids.add(pid)
+    elif option == 'youtube':
+        channel_data = re.findall('(UC[a-zA-Z0-9_-]{22})|(?<=user/)[a-zA-Z0-9_-]+', content)
+        for cid in channel_data: current_user.yt_followed_channel_ids.add(cid)
+        # TODO playlists?
     return redirect(request.referrer)
 
 
-@app.route('/deleteme', methods=['GET', 'POST'])
+@app.route('/settings/delete_subscriptions', methods=['DELETE'])
 @login_required
-def deleteme():
+def delete_user_subscriptions():
+    current_user.yt_followed_channel_ids.clear()
+    current_user.yt_followed_playlist_ids.clear()
+    return redirect(request.referrer)
+
+
+@app.route('/settings/delete_user', methods=['DELETE'])
+@login_required
+def delete_user():
     user = User.query.filter_by(username=current_user.username).first()
     db.session.delete(user)
     db.session.commit()
     logout_user()
     return redirect(url_for('index'))
-
-
-def importYoutubeSubscriptions(file):
-    filename = secure_filename(file.filename)
-    try:
-        data = re.findall('(UC[a-zA-Z0-9_-]{22})|(?<=user/)[a-zA-Z0-9_-]+', file.read().decode('utf-8'))
-        for acc in data:
-            r = followYoutubeChannel(acc)
-    except Exception as e:
-        print(e)
-        flash("File is not valid.")
-
-
-def importYotterSubscriptions(file):
-    filename = secure_filename(file.filename)
-    data = json.load(file)
-
-    for acc in data['youtube']:
-        r = followYoutubeChannel(acc['channelId'])
 
 
 @app.route('/status')

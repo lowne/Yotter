@@ -3,107 +3,180 @@
 {% block content %}
 <br>
 <div class="ui center aligned text container">
-    <h2 class="ui icon header">
+    <h1 class="ui icon header">
         <i class="settings icon"></i>
         <div class="content">
             Settings
-            <div class="sub header">Manage your settings.</div>
+            <div class="sub header"></div>
         </div>
-    </h2>
-</div>
+    </h1>
 
-<h2 class="ui centered header">
-    Imports can take up to 2 minutes.
-    <div class="sub header">You can still use Yotter.</div>
-  </h2>
-
-<div class="ui center aligned text container">
-    <div class="ui segments">
-        <div class="ui segment">
-            <div class="item">
-                <i class="large download middle aligned icon"></i>
-                <div class="content">
-                    <div class="description"><h5 class="ui header">Export data into JSON file</h5></div>
-                    <a href="{{ url_for('export') }}" class="header">Export Data</a>
-                </div>
-            </div>
-        </div>
-        <div class="ui blue segment">
-            <i class="large upload middle aligned icon"></i>
+    <div class="ui green segment">
+        <h3 class="ui header">
             <div class="content">
-                <div class="description"><h5 class="ui header">Import subscription data</h5></div>
-                <form action = "{{ url_for('importdata') }}" method = "POST" enctype = "multipart/form-data">
-                    <input type = "file" name = "file"/>
-                    <input type = "submit"/>
-                    <br>
-                    <label class="radio-inline">
-                        <input type="radio" name="import_format" id="yotter" value="yotter" checked> Yotter
-                    </label>
-                    <label class="radio-inline" data-tooltip="Includes FreeTube, Invidious and NewPipe.">
-                        <input type="radio" name="import_format" id="youtube" value="youtube"> Youtube
-                    </label>
-                </form>
+                Export your data
+                <div class="sub header">Save your channel and playlist subscriptions to a JSON file</div>
+            </div>
+        </h3>
+        <p>You are <a href="{{url_for('ytsubscriptions')}}">currently subscribed</a> to {{ current_user.yt_followed_channel_ids|length }} channels and {{ current_user.yt_followed_playlist_ids|length }} playlists</p>
+        <form class="ui form" action="{{url_for('export_user_data')}}" method="POST">
+            <i class="download large icon"></i>
+            <button type="submit" class="ui primary button">Export</button>
+        </form>
+    </div>
+    <div class="ui blue segment">
+        <h3 class="ui header">
+            <div class="content">
+                Import subscription data
+                <div class="sub header">Import data from a Yotter JSON file or <a href=https://www.youtube.com/subscription_manager>Youtube</a>/Invidious/etc. OPML file</div>
+            </div>
+        </h3>
+        <form class="ui form" action="{{ url_for('import_user_data') }}" method="POST" enctype = "multipart/form-data">
+            <div class="ui input">
+                <label class="radio-inline ui blue basic label">
+                    <input type="radio" name="import_format" id="yotter" value="yotter" checked> Yotter
+                </label>
+                <label class="radio-inline ui red basic label" data-tooltip="Includes FreeTube, Invidious and NewPipe.">
+                    <input type="radio" name="import_format" id="youtube" value="youtube"> Youtube
+                </label>
+            </div>
+            <br><br>
+            <div class="ui input">
+                <input type="file" name = "file"/>
+            </div>
+            <h4 class="ui centered header">
+                Imports can take up to 2 minutes - you can still use Yotter.
+            </h4>
+            <div class="ui segment"><p>
+                Imported subscriptions will be added to the current subscriptions.<br>
+                If you want a clean slate, delete your subscriptions below first.
+            </p></div>
+            <i class="upload large icon"></i>
+            <button class="ui primary button" type="submit">Import</button>
+        </form>
+    </div>
+
+    <!--<div class="item">
+        <i class="large moon middle aligned icon"></i>
+        <div class="content">
+            <div class="ui slider checkbox">
+                <input type="checkbox" name="newsletter">
+                <label>Dark mode</label>
             </div>
         </div>
     </div>
+    <div class="item">
+        <i class="large weight middle aligned icon"></i>
+        <div class="content">
+            <div class="ui slider checkbox">
+                <input type="checkbox" name="newsletter">
+                <label>Disable images</label>
+                <div class="description">Show links instead</div>
+            </div>
+        </div>
+    </div>-->
 
-        <!--<div class="item">
-            <i class="large moon middle aligned icon"></i>
+    <div class="ui segment yellow">
+        <h3 class="ui header">Clear subscriptions</h3>
+        <div class="inline field">
+            <div class="ui toggle checkbox">
+                <input type="checkbox" id="toggle">
+                <label>I want to delete my subscriptions</label>
+                <div class="control-me"><a href="{{url_for('delete_user_subscriptions')}}"><button class="ui red button">Clear subscriptions</button></a></div>
+            </div>
+          </div>
+    </div>
+    {% if not current_user.is_restricted %}
+    <div class="ui segment red">
+        <h3 class="ui header">Delete everything</h3>
+        <div class="inline field">
+            <div class="ui toggle checkbox">
+                <input type="checkbox" id="toggle">
+                <label>I want to delete my account</label>
+                <div class="control-me"><a href="{{url_for('delete_user')}}"><button class="ui red button">Delete account</button></a></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!--
+    {% if admin %}
+    <div class="ui segment">
+        <h2 class="ui centered header">
+            Admin tools
+        </h2>
+        <label for="toggle">Delete accounts with last login older than {{config.max_old_user_days}} days.</label> <br>
+        <a href="/clear_inactive_users/{{current_user.password_hash}}"><button class="ui red button">Delete</button></a></div>
+    </div>
+    {% endif %}-->
+
+    <!-- INSTANCE INFO -->
+    {% if info %}
+        <h3 class="ui icon header">
+            <i class="server icon"></i>
             <div class="content">
-                <div class="ui slider checkbox">
-                    <input type="checkbox" name="newsletter">
-                    <label>Dark mode</label>
+                Server Info
+            </div>
+        </h3>
+
+        <div class="ui two column grid segment">
+            <div class="ui right aligned column">
+                <div class="ui basic right pointing label">
+                    <i class="tag icon"></i>Name
                 </div>
             </div>
-        </div>
-        <div class="item">
-            <i class="large weight middle aligned icon"></i>
-            <div class="content">
-                <div class="ui slider checkbox">
-                    <input type="checkbox" name="newsletter">
-                    <label>Disable images</label>
-                    <div class="description">Show links instead</div>
+            <div class="ui left aligned column">
+                <div class="ui large black basic label">
+                    {{info.server_name}}
                 </div>
             </div>
-        </div>-->
-
-        <div class="ui segment">
-            <label for="toggle">I want to delete my account.</label>
-            <input type="checkbox" id="toggle">
-            <div class="control-me"><a href="/deleteme"><button class="ui red button">Delete account</button></a></div>   
-        </div>
-
-        <!--
-        {% if admin %}
-        <div class="ui segment">
-            <h2 class="ui centered header">
-                Admin tools
-            </h2>
-            <label for="toggle">Delete accounts with last login older than {{config.max_old_user_days}} days.</label> <br>
-            <a href="/clear_inactive_users/{{current_user.password_hash}}"><button class="ui red button">Delete</button></a></div>   
-        </div>
-        {% endif %}-->
-
-        <!-- INSTANCE INFO -->
-        <h1 class="ui header">{{config.serverName}} Info</h1>
-        <div class="ui segments">
-            <div class="ui segment">
-                <p><b>Total users:</b> {{info.totalUsers}}</p>
+            {% if info.server_location %}
+            <div class="ui right aligned column">
+                <div class="ui basic right pointing label">
+                    <i class="globe icon"></i>Location
+                </div>
             </div>
-            <div class="ui segment">
-                <p><b>Active users:</b> {{info.active}}</p>
-            </div>
-            <div class="ui segment">
-                <p><b>Server location:</b> {{config.serverLocation}}</p>
-            </div>
-            {% if config.donate_url %}
-            <div class="ui segment">
-                <p><a href="{{config.donate_url}}">Consider making a donation to the instance</a></p>
+            <div class="ui left aligned column">
+                <div class="ui large black basic label">
+                    {{info.server_location}}
+                </div>
             </div>
             {% endif %}
-            <div class="ui segment">
-                <p><a href="https://github.com/pluja/Yotter#donate">Donate to the Yotter developer</a></p>
+            <div class="ui right aligned column">
+                <div class="ui basic right pointing label">
+                    <i class="users icon"></i>Users
+                </div>
             </div>
-    </div>
+            <div class="ui left aligned column">
+                <div class="ui large {{'green' if info.registrations_allowed else 'red'}} basic label">
+                    {{info.total_users}} ({{info.active_users}} active) / {{info.max_users}} max
+                </div>
+            </div>
+
+            {% if info.donate_url or True%}
+            <div class="ui right aligned column">
+                <div class="ui basic right pointing label">
+                    <i class="money bill icon"></i>Donate
+                </div>
+            </div>
+            <div class="ui left aligned column">
+                <a href="{{ info.donate_url }}">Server admin</a>
+            </div>
+            {% endif %}
+        </div>
+        {% if info.donate_yotter or True %}
+        <div class="ui two column grid segment">
+            <div class="ui right aligned column">
+                <div class="ui basic right pointing label">
+                    <i class="money bill icon"></i>Donate
+                </div>
+            </div>
+            <div class="ui left aligned column">
+                <a href="https://github.com/pluja/Yotter#donate">Yotter developer</a>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
 </div>
+
 {% endblock %}
