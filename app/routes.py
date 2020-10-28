@@ -45,7 +45,7 @@ if config.external_proxy:
     if config.proxy_images: prop_mappers['map_image_url'] = lambda url: ext_proxy_mapper(_fix_thumbnail_hq(url))
     if config.proxy_videos: prop_mappers['map_stream_url'] = ext_proxy_mapper
 else:
-    if config.proxy_images: prop_mappers['map_image_url'] = lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url))
+    if config.proxy_images: prop_mappers['map_image_url'] = logged(lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url)))
     else: prop_mappers['map_image_url'] = _fix_thumbnail_hq
     if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
 
@@ -169,18 +169,13 @@ def _channel_page(request, ch):
     with db.session.no_autoflush:
         if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
             ch = ytChannel('NOTFOUND')._make_error('Channel not found')
-
         form = ChannelForm()  # TODO
-
-        page = request.args.get('page', 1)
-        sort = request.args.get('sort', 3)
-
+        page = int(request.args.get('page', 1))
+        sort = int(request.args.get('sort', 3))
         videos = ch.get_videos(page=page, sort=sort)
-
         next_page, prev_page = None, None
         if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
         if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
-
         return render_template('ytchannel.html', form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
 
@@ -315,7 +310,8 @@ def ytstream(url):
         req = s.get(url, stream=True)
         headers.add('Range', request.headers['Range'])
         headers.add('Accept-Ranges', 'bytes')
-        headers.add('Content-Length', str(int(req.headers['Content-Length']) + 1))
+        # headers.add('Content-Length', str(int(req.headers['Content-Length']) + 1))
+        headers.add('Content-Length', req.headers['Content-Length'])
         response = Response(req.iter_content(chunk_size=10 * 1024), mimetype=req.headers['Content-Type'],
                             content_type=req.headers['Content-Type'], direct_passthrough=True, headers=headers)
         # enable browser file caching with etags
@@ -334,7 +330,7 @@ def download_file(streamable):
             yield chunk
 
 # Proxy yt images through server
-@fscache.memoize(timeout=3600)
+@fscache.memoize(timeout=86400)
 @app.route('/ytimg/<path:url>')
 @check_login
 def ytimg(url):

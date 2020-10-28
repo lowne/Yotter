@@ -19,7 +19,7 @@
     </div>
     <div class="extra content">
         <span class="left floated">
-        {%if video.duration == "PREMIERING NOW" or video.duration == "LIVE"%}
+        {%if video.duration_human == "PREMIERING NOW" or video.duration_human == "LIVE"%}
             <i class="red circle icon"></i>
             LIVE
         {%else%}

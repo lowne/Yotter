@@ -495,6 +495,7 @@ class ytngChannel:
                 video.setprop('badges', item['badges'])
                 video._override_from_lists()
                 videos.append(video)
+        return videos
 
     def get_recent_videos(self, max_n=999, max_days=30):
         videos = []
