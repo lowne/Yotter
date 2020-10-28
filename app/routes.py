@@ -57,7 +57,7 @@ def check_login(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not current_user.is_admin: return redirect(url_for('error/404'))
+        if not current_user.is_admin: return redir_error(404)
         return f(*args, **kwargs)
     return decorated
 
@@ -220,8 +220,8 @@ def yt_user_action(what, action, id):
         # objs = current_user.yt_followed_playlists
         obj = ytPlaylist(id)
         name = obj.title
-    else: return redirect(url_for('error/405'))
-    if action != 'add' and action != 'remove': return redirect(url_for('error/405'))
+    else: return redir_error(405)
+    if action != 'add' and action != 'remove': return redir_error(405)
     if obj.invalid: flash(f'{what} id "{id}" is not valid', 'error')
     else:
         curr = id in ids
@@ -269,7 +269,7 @@ def ytvideo(id):
 @check_login
 def watch():
     vid = request.args.get('v', None)
-    if not vid: return redirect(url_for('error/405'))
+    if not vid: return redir_error(405)
     return _video_page(request, ytVideo(vid))
 
 
@@ -316,7 +316,7 @@ def ytstream(url):
         return response
     else:
         flash("Something went wrong loading the video... Try again.")
-        return redirect(url_for('error/500'))
+        return redir_error(500)
 
 
 def download_file(streamable):
@@ -346,15 +346,15 @@ def ytimg(url):
 @admin_required
 def yt_admin_action(what, where, action, id):
     attr = f'is_{where}'
-    if where != 'allowed' and where != 'blocked': return redirect(url_for('error/405'))
+    if where != 'allowed' and where != 'blocked': return redir_error(405)
     if what == 'channel':
         obj = ytChannel(id)
         name = obj.name
     elif what == 'playlist':
         obj = ytPlaylist(id)
         name = obj.title
-    else: return redirect(url_for('error/405'))
-    if action != 'add' and action != 'remove': return redirect(url_for('error/405'))
+    else: return redir_error(405)
+    if action != 'add' and action != 'remove': return redir_error(405)
     print(obj.__dict__)
     print(obj.is_allowed)
     if obj.invalid: flash(f'{what} id "{id}" is not valid', 'error')
@@ -565,8 +565,11 @@ def status():
     # img = url_for('static', filename='img/' + ('open' if registrations else 'close') +'.png')
     return render_template('status.html', title='STATUS', count=count, max=max(count, config.max_instance_users), registrations=registrations)
 
-@app.route('/error/<errno>')
+
+@app.route('/error/<int:errno>')
 def error(errno):
     return render_template('{}.html'.format(str(errno)), config=config)
 
 
+def redir_error(errno):
+    return redirect(url_for('error', errno=errno))
