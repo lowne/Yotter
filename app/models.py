@@ -31,13 +31,13 @@ class User(UserMixin, db.Model):
 
     db_followed_channels = db.relationship("dbChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
     # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
-    yt_followed_channel_ids = association_proxy('db_followed_channels', 'id', creator=lambda id: dbChannel(id=id))
+    yt_followed_channel_ids = association_proxy('db_followed_channels', 'id', creator=lambda id: dbChannel.load(id))
 
     @property
     def yt_followed_channels(self): return frozenset([ytChannel(id) for id in self.yt_followed_channel_ids])
 
     db_followed_playlists = db.relationship("dbPlaylist", collection_class=set, secondary=user_playlist_assoc, back_populates="followers", lazy=True)
-    yt_followed_playlist_ids = association_proxy('db_followed_playlists', 'id', creator=lambda id: dbPlaylist(id=id))
+    yt_followed_playlist_ids = association_proxy('db_followed_playlists', 'id', creator=lambda id: dbPlaylist.load(id))
 
     @property
     def yt_followed_playlists(self): return frozenset([ytPlaylist(id) for id in self.yt_followed_playlist_ids])
@@ -73,6 +73,12 @@ class dbBase(object):
     id = db.Column(db.String(64), index=True, unique=True, nullable=False)
     created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
 
+    @classmethod
+    def load(cls, id):
+        with db.session.no_autoflush:
+            return db.session.query(cls).filter(cls.id == id).first() or cls(id=id)
+
+
 
 class dbChannel(dbBase, db.Model):
     __tablename__ = 'yt_channel'
@@ -97,8 +103,7 @@ class dbVideo(dbBase, db.Model):
 def link_db(cls, dbcls):
     def dbget(self):
         if hasattr(self, '_db_obj'): return getattr(self, '_db_obj')
-        with db.session.no_autoflush:
-            obj = db.session.query(dbcls).filter(dbcls.id == self.id).first() or dbcls(id=self.id)
+        obj = dbcls.load(self.id)
         setattr(self, '_db_obj', obj)
         return obj
     setattr(cls, 'db_obj', property(dbget, None, None, f'db-backed object'))
