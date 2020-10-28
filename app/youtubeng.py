@@ -17,6 +17,7 @@ __ytl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'youtube-lo
 sys.path.append(__ytl_dir)
 import youtube
 import youtube.playlist
+import youtube.channel
 
 
 def utcnow(): return datetime.datetime.now(datetime.timezone.utc)
@@ -44,36 +45,15 @@ def logged(f):
 
 ####################################################################
 # adapted from https://github.com/sqlalchemy/sqlalchemy/wiki/UniqueObject
-def _unique_db(session, cls, hashfunc, queryfunc, constructor, arg, kw):
-    cache = getattr(session, '_unique_cache', None)
-    if cache is None:
-        session._unique_cache = cache = {}
-
-    key = (cls, hashfunc(*arg, **kw))
-    if key in cache:
-        return cache[key]
-    else:
-        with session.no_autoflush:
-            q = session.query(cls)
-            q = queryfunc(q, *arg, **kw)
-            obj = q.first()
-            if not obj:
-                obj = constructor(*arg, **kw)
-                session.add(obj)
-        cache[key] = obj
+def unique_constructor(hash=hash, cache={}):
+    def _unique_cache(cache, cls, hashfunc, constructor, arg, kw):
+        key = hashfunc(*arg, **kw)
+        obj = cache.get(key)
+        if obj is None:
+            obj = constructor(*arg, **kw)
+            cache.set(key, obj)
         return obj
 
-
-def _unique_cache(cache, cls, hashfunc, constructor, arg, kw):
-    key = hashfunc(*arg, **kw)
-    obj = cache.get(key)
-    if obj is None:
-        obj = constructor(*arg, **kw)
-        cache.set(key, obj)
-    return obj
-
-
-def unique_constructor(hash=hash, query=None, session=None, cache={}):
     # class decorator
     def decorator(cls):
         def _null_init(self, *arg, **kw): pass
@@ -86,24 +66,14 @@ def unique_constructor(hash=hash, query=None, session=None, cache={}):
             # obj.__init__(*arg, **kw)
             return obj
 
-        if session:
-            @wraps(cls)
-            def _new_db(cls, bases, *arg, **kw):
-                # no-op __new__(), called
-                # by the loading procedure
-                if not arg and not kw: return object.__new__(cls)
-                return _unique_db(session(), cls, hash, query, constructor, arg, kw)
-            cls.__new__ = classmethod(_new_db)
-        else:
-            @wraps(cls)
-            def _new_cache(cls, bases, *arg, **kw):
-                if not arg and not kw: return object.__new__(cls)
-                return _unique_cache(cache, cls, hash, constructor, arg, kw)
-            cls.__new__ = classmethod(_new_cache)
+        @wraps(cls)
+        def _new_cache(cls, bases, *arg, **kw):
+            if not arg and not kw: return object.__new__(cls)
+            return _unique_cache(cache, cls, hash, constructor, arg, kw)
+        cls.__new__ = classmethod(_new_cache)
         return cls
     return decorator
 ####################################################################
-
 
 
 # class decorator
@@ -144,7 +114,6 @@ def propgroups(cl):
     for grp, props in cl.__propgroups__.items():
         # use a default arg to capture the value in the closure
         # https://stackoverflow.com/a/54289183
-
         def setcache(self, grp=grp, props=props):
             d = dict()
             for prop in props:
@@ -195,22 +164,29 @@ def propgroups(cl):
     return cl
 
 
+def fix_ytlocal_url(url): return url[1:] if url.startswith('/http') else url
+
+
 BASE_URL = 'https://www.youtube.com'
 
 
-def fix_ytlocal_url(url): return url[1:] if url.startswith('/http') else url
+class ytBase(object):
+    invalid = False
+    def __repr__(self): return f"<{self.__class__.__name__} {getattr(self,'id','?')}>"
+    def __init__(self, id): self.id = id
 
 
 ############################### VIDEO ######################################
 @unique_constructor(hash=hash, cache=cache)
 @propgroups
-class ytngVideo:
+class ytVideo(ytBase):
     __propgroups__ = {'oembed': ['title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
                       'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos', 'av_sources', 'audio_sources', 'caption_sources'],
                       'from_lists': ['badges'],
                       'ts_human': ['timestamp_human'],
                       'dur_human': ['duration_human'],
                       'ch_avatar': ['channel_avatar'],
+                      'url': ['url'],
                       'NYI': ['is_upcoming']}
 
     __prop_mappers__ = {'thumbnail': 'map_image_url', 'channel_avatar': 'map_image_url', 'timestamp_human': 'map_trim_ago'}
@@ -220,12 +196,8 @@ class ytngVideo:
                         'view_count': 0, 'rating': 0, 'rating_count': 0, 'tags': [], 'related_videos': [], 'av_sources': [], 'audio_sources': [], 'caption_sources': [],
                         'badges': [], 'timestamp_human': 'never'}
 
-    def __repr__(self): return f"<ytngVideo {getattr(self,'id','?')}>"
-
-    @logged
-    def __init__(self, id):
-        self.id = id
-        self.invalid = False
+    @cache.memoize(timeout=1)
+    def _get_url(self): return {'url': f'{BASE_URL}/watch?v={self.id}'}
 
     @fscache.memoize(timeout=86400)
     @logged
@@ -242,7 +214,7 @@ class ytngVideo:
 
     @cache.memoize(timeout=86400)
     @logged
-    def _get_ch_avatar(self): return {'channel_avatar': ytngChannel(self.cid).avatar}
+    def _get_ch_avatar(self): return {'channel_avatar': ytChannel(self.cid).avatar_unmapped}
 
     @fscache.memoize(timeout=3600 * 2)
     @logged
@@ -303,7 +275,7 @@ class ytngVideo:
         related = []
         for item in info['related_videos']:
             if not item['error'] and item['type'] == 'video':
-                video = ytngVideo(item['id'])
+                video = ytVideo(item['id'])
                 video.setprop('title', item['title'])
                 video.setprop('thumbnail', item['thumbnail'])
                 video.setprop('channel_name', item['author'])
@@ -360,7 +332,7 @@ class ytngVideo:
         return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
 
     @fscache.memoize(timeout=1)
-    def _get_dur_human(self): return ''
+    def _get_dur_human(self): return {'duration_human' :''}
 
     @property
     def views_human(self): return intword(self.view_count)
@@ -372,12 +344,12 @@ def _get_atom_feed(url):
     videos = []
     with FuturesSession() as session:
         resp = session.get(url).result()
-        if resp.status == 404: return None
+        if resp.status_code != 200: return None
         rssFeed = feedparser.parse(resp.content)
         try: published = dateparse(rssFeed.feed.published)
         except (AttributeError, ValueError): published = now
         for entry in rssFeed.entries:
-            video = ytngVideo(entry.yt_videoid)
+            video = ytVideo(entry.yt_videoid)
             video.addprop('duration', '')
             video.setprop('title', entry.title)
             video.setprop('thumbnail', entry.media_thumbnail[0]['url'])
@@ -402,10 +374,12 @@ def _get_atom_feed(url):
 ############################### CHANNEL ######################################
 @unique_constructor(hash=hash, cache=cache)
 @propgroups
-class ytngChannel:
+class ytChannel(ytBase):
     __propgroups__ = {'about_page': ['name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
                       'mf_numvids': ['num_videos', 'num_video_pages'],
-                      'feed': ['recent_videos'], 'NYI': ['playlists', 'all_videos']}
+                      'feed': ['recent_videos'],
+                      'url': ['url'],
+                      'NYI': ['playlists']}
 
     __prop_mappers__ = {'avatar': 'map_image_url'}
 
@@ -413,13 +387,8 @@ class ytngChannel:
                         'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': [],
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
-    def __repr__(self): return f"<ytngChannel {getattr(self,'id','?')}>"
-
-    @logged
-    def __init__(self, id):
-        self.id = id
-        self.url = f'{BASE_URL}/channel/{id}'
-        self.invalid = False
+    @cache.memoize(timeout=1)
+    def _get_url(self): return {'url': f'{BASE_URL}/channel/{self.id}'}
 
     # TODO remove?
     @fscache.memoize(timeout=86400 * 7)
@@ -480,7 +449,7 @@ class ytngChannel:
 
         for item in info['items']:
             if not item['error'] and item['type'] == 'video':
-                video = ytngVideo(item['id'])
+                video = ytVideo(item['id'])
                 video.setprop('title', item['title'])
                 video.setprop('thumbnail', item['thumbnail'])
                 video.setprop('channel_name', info['channel_name'])
@@ -510,9 +479,11 @@ class ytngChannel:
     @classmethod
     def for_urlpath(cls, path):
         cid = get_cid_for_urlpath(path)
-        if cid is not None: return cls(cid, url=f'{BASE_URL}{path}')
-        return cls('NOTFOUND')._make_error(f"invalid path '{path}'")
-
+        if cid is None: return cls('NOTFOUND')._make_error(f"invalid path '{path}'")
+        ch = cls(cid)
+        ch.setprop('url', f'{BASE_URL}{path}')
+        ch._override_url()
+        return ch
 
 @fscache.memoize(timeout=86400 * 7)
 def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL}{path}')
@@ -521,9 +492,9 @@ def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL
 ############################### PLAYLIST ######################################
 @unique_constructor(hash=hash, cache=cache)
 @propgroups
-class ytngPlaylist:
+class ytPlaylist(ytBase):
     __propgroups__ = {'page': ['title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
-                      'skip': ['url'],
+                      'url': ['url'],
                       'ch_avatar': ['channel_avatar'],
                       'feed': ['recent_videos', 'published']}
 
@@ -533,16 +504,8 @@ class ytngPlaylist:
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--playlist does not exist--',
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
-    def __repr__(self): return f"<ytngPlaylist {getattr(self,'id','?')}>"
-
-    @logged
-    def __init__(self, id):
-        self.id = id
-        self.url = f'{BASE_URL}/playlist?list={id}'
-        self.invalid = False
-
     @cache.memoize(timeout=1)
-    def _get_skip(self): return {'url': f'{BASE_URL}/playlist?list={self.id}'}
+    def _get_url(self): return {'url': f'{BASE_URL}/playlist?list={self.id}'}
 
     @fscache.memoize(timeout=3600 * 6)
     @logged
@@ -585,7 +548,7 @@ class ytngPlaylist:
 
         for item in info['items']:
             if item['type'] == 'video':
-                video = ytngVideo(item['id'])
+                video = ytVideo(item['id'])
                 video.setprop('title', item['title'])
                 video.setprop('thumbnail', item['thumbnail'])
                 video.setprop('channel_name', item['author'])
@@ -610,6 +573,3 @@ class ytngPlaylist:
             if len(videos) >= max_n: break
             videos.append(v)
         return videos
-
-
-

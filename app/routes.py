@@ -1,9 +1,7 @@
 import datetime
 import json
 import re
-import time
 import urllib
-from concurrent.futures import as_completed
 from functools import wraps
 from operator import attrgetter
 import bleach
@@ -12,19 +10,17 @@ import requests
 from flask import Response
 from flask import render_template, flash, redirect, url_for, request, send_from_directory, Markup
 from flask_login import login_user, logout_user, current_user, login_required
-from requests_futures.sessions import FuturesSession
 from werkzeug.datastructures import Headers
 from werkzeug.urls import url_parse
 from werkzeug.utils import secure_filename
-from youtube_search import YoutubeSearch
 
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytChannel, ytPlaylist, ytVideo, prop_mappers
-from youtube import comments, channel as ytch, search as yts
-from youtube import watch as ytwatch
-from youtube import yt_data_extract
-from youtube.channel import post_process_channel_info
+from app.models import User, ytChannel, ytPlaylist, ytVideo
+from app.youtubeng import prop_mappers, logged
+
+# FIXME deprecated
+from youtube import search as yts
 
 
 ##########################
@@ -92,8 +88,8 @@ def ytfeed():
     max_days = 365
     # start_time = time.time()
     videos = []
-    for cid in current_user.yt_followed_cids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
-    for pid in current_user.yt_followed_pids: videos.extend(ytPlaylist(pid).get_recent_videos(max_days=max_days))
+    for cid in current_user.yt_followed_channel_ids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
+    for pid in current_user.yt_followed_playlist_ids: videos.extend(ytPlaylist(pid).get_recent_videos(max_days=max_days))
     videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
     return render_template('ytfeed.html', videos=videos[:50], include_channel_header=True)
@@ -215,12 +211,12 @@ def _playlist_page(request, pid):
 @login_required
 def yt_user_action(what, action, id):
     if what == 'channel':
-        ids = current_user.yt_followed_cids
+        ids = current_user.yt_followed_channel_ids
         # objs = current_user.yt_followed_channels
         obj = ytChannel(id)
         name = obj.name
     elif what == 'playlist':
-        ids = current_user.yt_followed_pids
+        ids = current_user.yt_followed_playlist_ids
         # objs = current_user.yt_followed_playlists
         obj = ytPlaylist(id)
         name = obj.title
@@ -463,7 +459,7 @@ def export():
 
 
 def exportData():
-    cids = current_user.yt_followed_channels
+    cids = current_user.yt_followed_channel_ids
     data = {'username': current_user.username, 'description': 'list of followed YouTube channels'}
     data['youtube'] = []
 
