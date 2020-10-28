@@ -26,21 +26,45 @@ class ATTRFLAG: pass
 _idfn = lambda v: v
 _trim_ago = lambda s: s[:-4] if s.endswith(' ago') else s
 
+
 prop_mappers = {
   'map_image_url': _idfn,
   'map_stream_url': _idfn,
   'map_trim_ago': _idfn,
 }
 
+
 def logged(f):
     @wraps(f)
-    def wrapped(*args,**kwargs):
+    def wrapped(*args, **kwargs):
         print(f'.run {f}({args},{kwargs})')
-        return f(*args,**kwargs)
+        return f(*args, **kwargs)
     return wrapped
 
 
-def _unique(cls, hashfunc, constructor, arg, kw):
+####################################################################
+# adapted from https://github.com/sqlalchemy/sqlalchemy/wiki/UniqueObject
+def _unique_db(session, cls, hashfunc, queryfunc, constructor, arg, kw):
+    cache = getattr(session, '_unique_cache', None)
+    if cache is None:
+        session._unique_cache = cache = {}
+
+    key = (cls, hashfunc(*arg, **kw))
+    if key in cache:
+        return cache[key]
+    else:
+        with session.no_autoflush:
+            q = session.query(cls)
+            q = queryfunc(q, *arg, **kw)
+            obj = q.first()
+            if not obj:
+                obj = constructor(*arg, **kw)
+                session.add(obj)
+        cache[key] = obj
+        return obj
+
+
+def _unique_cache(cache, cls, hashfunc, constructor, arg, kw):
     key = hashfunc(*arg, **kw)
     obj = cache.get(key)
     if obj is None:
@@ -49,22 +73,37 @@ def _unique(cls, hashfunc, constructor, arg, kw):
     return obj
 
 
-def unique_constructor(hashfunc):
-    def decorate(cls):
+def unique_constructor(hash=hash, query=None, session=None, cache={}):
+    # class decorator
+    def decorator(cls):
         def _null_init(self, *arg, **kw): pass
-        @wraps(cls)
-        def __new__(cls, bases, *arg, **kw):
-            if not arg and not kw: return object.__new__(cls)
-            def constructor(*arg, **kw):
-                obj = object.__new__(cls)
-                obj._init(*arg, **kw)
-                return obj
-            return _unique(cls, hashfunc, constructor, arg, kw)
-        cls._init = cls.__init__
+        cls._unique_init = cls.__init__
         cls.__init__ = _null_init
-        cls.__new__ = classmethod(__new__)
+
+        def constructor(*arg, **kw):
+            obj = object.__new__(cls)
+            obj._unique_init(*arg, **kw)
+            # obj.__init__(*arg, **kw)
+            return obj
+
+        if session:
+            @wraps(cls)
+            def _new_db(cls, bases, *arg, **kw):
+                # no-op __new__(), called
+                # by the loading procedure
+                if not arg and not kw: return object.__new__(cls)
+                return _unique_db(session(), cls, hash, query, constructor, arg, kw)
+            cls.__new__ = classmethod(_new_db)
+        else:
+            @wraps(cls)
+            def _new_cache(cls, bases, *arg, **kw):
+                if not arg and not kw: return object.__new__(cls)
+                return _unique_cache(cache, cls, hash, constructor, arg, kw)
+            cls.__new__ = classmethod(_new_cache)
         return cls
-    return decorate
+    return decorator
+####################################################################
+
 
 
 # class decorator
@@ -153,11 +192,11 @@ def propgroups(cl):
 BASE_URL = 'https://www.youtube.com'
 
 
-def fix_ytlocal_url(url):
-    return url[1:] if url.startswith('/http') else url
+def fix_ytlocal_url(url): return url[1:] if url.startswith('/http') else url
+
 
 ############################### VIDEO ######################################
-@unique_constructor(hash)
+@unique_constructor(hash=hash, cache=cache)
 @propgroups
 class ytngVideo:
     __propgroups__ = {'oembed': ['title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
@@ -177,8 +216,8 @@ class ytngVideo:
 
     def __repr__(self): return f"<ytngVideo {getattr(self,'id','?')}>"
 
+    @logged
     def __init__(self, id):
-        print(f'***new ytngvideo {id}')
         self.id = id
         self.invalid = False
 
@@ -189,7 +228,7 @@ class ytngVideo:
             resp = session.get(f"https://www.youtube.com/oembed?format=json&url=http%3A%2F%2Fyoutu.be%2F{self.id}").result()
             if resp.status_code != 200: return self._return_error('oembed', resp.text)
             info = json.loads(resp.content)
-            return {'title': info['title'], 'thumbnail': info['thumbnail_url'], 'channel_name': info['author_name'], 'channel_url': info['author_url']}
+            return {'title': info['title'], 'thumbnail': prop_mappers['map_image_url'](info['thumbnail_url']), 'channel_name': info['author_name'], 'channel_url': info['author_url']}
 
     @fscache.memoize(timeout=86400 * 7)
     @logged
@@ -352,10 +391,10 @@ def _get_atom_feed(url):
             videos.append(video)
     return {'title': rssFeed.feed.title, 'cid': rssFeed.feed.yt_channelid, 'channel_name': rssFeed.feed.author_detail.name, 'channel_url': rssFeed.feed.author_detail.href,
             'published': published, 'videos': videos}
-@unique_constructor(hash)
 
 
 ############################### CHANNEL ######################################
+@unique_constructor(hash=hash, cache=cache)
 @propgroups
 class ytngChannel:
     __propgroups__ = {'about_page': ['name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
@@ -370,6 +409,7 @@ class ytngChannel:
 
     def __repr__(self): return f"<ytngChannel {getattr(self,'id','?')}>"
 
+    @logged
     def __init__(self, id):
         self.id = id
         self.url = f'{BASE_URL}/channel/{id}'
@@ -392,6 +432,7 @@ class ytngChannel:
         return {'name': info['name'], 'avatar': info['avatar'], 'sub_count': info['subCount'], 'invalid': info.get('invalid', False)}
 
     @fscache.memoize(timeout=3600)
+    @logged
     def _get_feed(self):
         r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?channel_id={self.id}")
         if not r: return self._return_error('feed', 'channel id not found')
@@ -401,6 +442,7 @@ class ytngChannel:
         return {'recent_videos': r['videos']}
 
     @fscache.memoize(timeout=86400 * 7)
+    @logged
     def _get_about_page(self):
         polymer = youtube.channel.get_channel_tab(self.id, tab='about', print_status=False)
         info = youtube.yt_data_extract.extract_channel_info(json.loads(polymer), 'about')
@@ -420,6 +462,7 @@ class ytngChannel:
         return {'num_videos': numvids, 'num_video_pages': math.ceil(numvids / 30)}
 
     @fscache.memoize(timeout=3600)
+    @logged
     def get_videos(self, page=1, sort=3):
         videos = []
         if self.invalid: return videos
@@ -469,7 +512,7 @@ def get_cid_for_urlpath(path): return youtube.channel.get_channel_id(f'{BASE_URL
 
 
 ############################### PLAYLIST ######################################
-@unique_constructor(hash)
+@unique_constructor(hash=hash, cache=cache)
 @propgroups
 class ytngPlaylist:
     __propgroups__ = {'page': ['title', 'thumbnail', 'cid', 'channel_name', 'channel_url', 'num_videos', 'num_video_pages', 'description', 'view_count'],
@@ -484,6 +527,7 @@ class ytngPlaylist:
 
     def __repr__(self): return f"<ytngPlaylist {getattr(self,'id','?')}>"
 
+    @logged
     def __init__(self, id):
         self.id = id
         self.url = f'{BASE_URL}/playlist?list={id}'
@@ -493,6 +537,7 @@ class ytngPlaylist:
     def _get_skip(self): return {'url': f'{BASE_URL}/playlist?list={self.id}'}
 
     @fscache.memoize(timeout=3600 * 6)
+    @logged
     def _get_feed(self):
         r = _get_atom_feed(f"https://www.youtube.com/feeds/videos.xml?playlist_id={self.id}")
         if not r: return self._return_error('feed', 'playlist id not found')
@@ -503,6 +548,7 @@ class ytngPlaylist:
         return {'published': r['published'], 'recent_videos': r['videos']}
 
     @fscache.memoize(timeout=3600 * 6)
+    @logged
     def _get_page(self):
         polymer = youtube.playlist.playlist_first_page(self.id)
         info = youtube.yt_data_extract.extract_playlist_metadata(polymer)
@@ -515,6 +561,7 @@ class ytngPlaylist:
                 'description': info['description'], 'view_count': info['view_count']}
 
     @fscache.memoize(timeout=3600 * 6)
+    @logged
     def get_videos(self, page=1):
         videos = []
         if self.invalid: return videos

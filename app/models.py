@@ -4,7 +4,7 @@ from app import db, login, fscache
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
-from app.youtubeng import ytngVideo, ytngChannel, ytngPlaylist, prop_mappers
+from app.youtubeng import ytngVideo, ytngChannel, ytngPlaylist, unique_constructor, prop_mappers, logged
 
 
 ####################################################################
@@ -29,7 +29,7 @@ def _unique(session, cls, hashfunc, queryfunc, constructor, arg, kw):
         return obj
 
 
-def unique_constructor(scoped_session, hashfunc, queryfunc):
+def lunique_constructor(session=None, hash=None, query=None):
     def decorate(cls):
         def _null_init(self, *arg, **kw):
             pass
@@ -41,17 +41,17 @@ def unique_constructor(scoped_session, hashfunc, queryfunc):
             if not arg and not kw:
                 return object.__new__(cls)
 
-            session = scoped_session()
+            sess = session()
 
             def constructor(*arg, **kw):
                 obj = object.__new__(cls)
-                obj._init(*arg, **kw)
+                obj._unique_init(*arg, **kw)
                 return obj
 
-            return _unique(session, cls, hashfunc, queryfunc, constructor, arg, kw)
+            return _unique(sess, cls, hash, query, constructor, arg, kw)
 
         # note: cls must be already mapped for this part to work
-        cls._init = cls.__init__
+        cls._unique_init = cls.__init__
         cls.__init__ = _null_init
         cls.__new__ = classmethod(__new__)
         return cls
@@ -61,7 +61,6 @@ def unique_constructor(scoped_session, hashfunc, queryfunc):
 
 ####################################################################
 
-
 user_channel_assoc = db.Table('user_channel_assoc',
                               db.Column('channel_rowid', db.Integer, db.ForeignKey('yt_channel.rowid')),
                               db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
@@ -69,14 +68,14 @@ user_channel_assoc = db.Table('user_channel_assoc',
 
 
 user_playlist_assoc = db.Table('user_playlist_assoc',
-                              db.Column('playlist_rowid', db.Integer, db.ForeignKey('yt_playlist.rowid')),
-                              db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
-                              )  # Association: PLAYLIST --followed by--> [USERS]
+                               db.Column('playlist_rowid', db.Integer, db.ForeignKey('yt_playlist.rowid')),
+                               db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
+                               )  # Association: PLAYLIST --followed by--> [USERS]
 
 
-@unique_constructor(db.session,
-                    lambda username, **kw: username,
-                    lambda query, username, **kw: query.filter(User.username == username)
+@unique_constructor(session=db.session,
+                    hash=lambda username, **kw: username,
+                    query=lambda query, username, **kw: query.filter(User.username == username)
                     )
 class User(UserMixin, db.Model):
     rowid = db.Column(db.Integer, primary_key=True)
@@ -119,47 +118,49 @@ def load_user(rowid):
     return User.query.get(int(rowid))
 
 
-@unique_constructor(db.session,
-                    lambda id, **kw: id,
-                    lambda query, id, **kw: query.filter(ytChannel.id == id)
-                    )
-class ytChannel(ytngChannel, db.Model):
-    __tablename__ = 'yt_channel'
-    def __repr__(self): return f'<ytChannel {self.id}>'
+class ytMixin(object):
+    def __repr__(self): return f"<{self.__class__.__name__} {getattr(self,'id','?')}>"
+
     rowid = db.Column(db.Integer, primary_key=True)
     id = db.Column(db.String(64), index=True, unique=True, nullable=False)
     created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
     # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @logged
+    def __init__(self, id):
+        sobj = super()
+        return getattr(sobj, '_unique_init', sobj.__init__)(id)
+        # return super().__init__(id)
+
+
+@unique_constructor(session=db.session,
+                    hash=lambda id, **kw: id,
+                    query=lambda query, id, **kw: query.filter(ytChannel.id == id)
+                    )
+class ytChannel(ytMixin, ytngChannel, db.Model):
+    __tablename__ = 'yt_channel'
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
     followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="yt_followed_channels", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
 
 
-@unique_constructor(db.session,
-                    lambda id, **kw: id,
-                    lambda query, id, **kw: query.filter(ytPlaylist.id == id)
+@unique_constructor(session=db.session,
+                    hash=lambda id, **kw: id,
+                    query=lambda query, id, **kw: query.filter(ytPlaylist.id == id)
                     )
-class ytPlaylist(ytngPlaylist, db.Model):
+class ytPlaylist(ytMixin, ytngPlaylist, db.Model):
     __tablename__ = 'yt_playlist'
-    def __repr__(self): return f'<ytPlaylist {self.id}>'
-    rowid = db.Column(db.Integer, primary_key=True)
-    id = db.Column(db.String(64), index=True, unique=True, nullable=False)
-    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
-    # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     # is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
     followers = db.relationship('User', collection_class=set, secondary=user_playlist_assoc, back_populates="yt_followed_playlists", lazy=True)
     follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
 
 
-@unique_constructor(db.session,
-                    lambda id, **kw: id,
-                    lambda query, id, **kw: query.filter(ytVideo.id == id)
+@unique_constructor(session=db.session,
+                    hash=lambda id, **kw: id,
+                    query=lambda query, id, **kw: query.filter(ytVideo.id == id)
                     )
-class ytVideo(ytngVideo, db.Model):
+class ytVideo(ytMixin, ytngVideo, db.Model):
     __tablename__ = 'yt_video'
-    def __repr__(self): return f'<ytVideo {self.id}>'
-    rowid = db.Column(db.Integer, primary_key=True)
-    id = db.Column(db.String(64), index=True, unique=True, nullable=False)
-    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
+
