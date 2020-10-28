@@ -4,7 +4,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
 from app.youtubeng import ytVideo, ytChannel, ytPlaylist
-
+utcnow=datetime.utcnow
 
 user_channel_assoc = db.Table('user_channel_assoc',
                               db.Column('channel_rowid', db.Integer, db.ForeignKey('yt_channel.rowid')),
@@ -20,12 +20,12 @@ user_playlist_assoc = db.Table('user_playlist_assoc',
 
 class User(UserMixin, db.Model):
     rowid = db.Column(db.Integer, primary_key=True)
-    def get_id(self): return self.rowid
+    def get_id(self): return str(self.rowid)
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
-    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
-    # updated_on = db.Column(db.DateTime(), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
+    # updated_on = db.Column(db.DateTime(), default=utcnow, onupdate=utcnow)
     password_hash = db.Column(db.String(128))
-    last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime(), default=utcnow)
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
 
@@ -45,7 +45,7 @@ class User(UserMixin, db.Model):
     def __repr__(self): return f'<User {self.username}>'
 
     def set_last_seen(self):
-        self.last_seen = datetime.utcnow()
+        self.last_seen = utcnow()
 
     def set_admin_user(self):
         self.is_admin = True
@@ -61,15 +61,17 @@ class User(UserMixin, db.Model):
 
 
 @login.user_loader
-def load_user(rowid):
-    return User.query.get(int(rowid))
+def load_user(uid):
+    user = User.query.get(int(uid))
+    if user: user.set_last_seen()
+    return user
 
 
 class dbBase(object):
     def __repr__(self): return f"<{self.__class__.__name__} {getattr(self,'id','?')}>"
     rowid = db.Column(db.Integer, primary_key=True)
     id = db.Column(db.String(64), index=True, unique=True, nullable=False)
-    created_on = db.Column(db.DateTime(), default=datetime.utcnow, nullable=False)
+    created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
 
 
 class dbChannel(dbBase, db.Model):

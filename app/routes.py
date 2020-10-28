@@ -373,6 +373,33 @@ def yt_admin_action(what, where, action, id):
 #########################
 #### General Logic ######
 #########################
+def registrations_allowed():
+    if config.maintenance_mode: return False
+    if config.max_instance_users == 0: return False
+    if db.session.query(User).count() >= config.max_instance_users: return False
+    return True
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated: return redirect(url_for('index'))
+
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        if User.query.filter_by(username=form.username.data).first():
+            flash("This username is taken! Try with another.")
+            return redirect(request.referrer)
+
+        user = User(username=form.username.data)
+        user.set_password(form.password.data)
+        db.session.add(user)
+        db.session.commit()
+        flash('Congratulations, you are now a registered user!')
+        return redirect(url_for('login'))
+
+    return render_template('register.html', title='Register', registrations=registrations_allowed(), form=form)
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -387,11 +414,12 @@ def login():
             user.set_admin_user()
             db.session.commit()
         login_user(user, remember=form.remember_me.data)
+        user.set_last_seen()
         next_page = request.args.get('next')
         if not next_page or url_parse(next_page).netloc != '':
             next_page = url_for('index')
         return redirect(next_page)
-    return render_template('login.html', title='Sign In', form=form, config=config)
+    return render_template('login.html', title='Login', form=form)
 
 
 @app.route('/logout')
@@ -530,34 +558,6 @@ def importYotterSubscriptions(file):
         r = followYoutubeChannel(acc['channelId'])
 
 
-def registrations_allowed():
-    if config.maintenance_mode: return False
-    if config.max_instance_users == 0: return False
-    if db.session.query(User).count() >= config.max_instance_users: return False
-    return True
-
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        if User.query.filter_by(username=form.username.data).first():
-            flash("This username is taken! Try with another.")
-            return redirect(request.referrer)
-
-        user = User(username=form.username.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash('Congratulations, you are now a registered user!')
-        return redirect(url_for('login'))
-
-    return render_template('register.html', title='Register', registrations=registrations_allowed(), form=form, config=config)
-
-
 @app.route('/status')
 def status():
     count = db.session.query(User).count()
@@ -568,18 +568,5 @@ def status():
 @app.route('/error/<errno>')
 def error(errno):
     return render_template('{}.html'.format(str(errno)), config=config)
-
-
-def getTimeDiff(t):
-    diff = datetime.datetime.now() - datetime.datetime(*t[:6])
-
-    if diff.days == 0:
-        if diff.seconds > 3599:
-            timeString = "{}h".format(int((diff.seconds / 60) / 60))
-        else:
-            timeString = "{}m".format(int(diff.seconds / 60))
-    else:
-        timeString = "{}d".format(diff.days)
-    return timeString
 
 
