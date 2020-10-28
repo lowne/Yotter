@@ -85,7 +85,7 @@ def propgroups(cl):
     def store_if_absent(self, prop, val):
         if getattr(self, f'_{prop}', ATTRFLAG) is ATTRFLAG: setattr(self, prop, val)
     cl.addprop = store_if_absent
-    cl.setprop = setattr
+    cl.setprop = lambda self, k, v: setattr(self, k, v)
 
     def return_error(self, grp, error):
         resp, attrs, grpkeys = {}, {}, self.__propgroups__.get(grp, [])
@@ -175,7 +175,7 @@ class ytngVideo:
                         'view_count': 0, 'rating': 0, 'rating_count': 0, 'tags': [], 'related_videos': [], 'av_sources': [], 'audio_sources': [], 'caption_sources': [],
                         'badges': [], 'timestamp_human': 'never'}
 
-    def __repr__(self): return f"<ytngVideo {self.id}>"
+    def __repr__(self): return f"<ytngVideo {getattr(self,'id','?')}>"
 
     def __init__(self, id):
         print(f'***new ytngvideo {id}')
@@ -314,11 +314,13 @@ class ytngVideo:
         # TODO 'Scheduled', 'LIVE'
         return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
 
+    @fscache.memoize(timeout=1)
+    def _get_dur_human(self): return ''
+
     @property
     def views_human(self): return intword(self.view_count)
 
 
-############################### CHANNEL ######################################
 # @fscache.memoize(timeout=3)
 def _get_atom_feed(url):
     now = utcnow()
@@ -350,9 +352,10 @@ def _get_atom_feed(url):
             videos.append(video)
     return {'title': rssFeed.feed.title, 'cid': rssFeed.feed.yt_channelid, 'channel_name': rssFeed.feed.author_detail.name, 'channel_url': rssFeed.feed.author_detail.href,
             'published': published, 'videos': videos}
-
-
 @unique_constructor(hash)
+
+
+############################### CHANNEL ######################################
 @propgroups
 class ytngChannel:
     __propgroups__ = {'about_page': ['name', 'url', 'avatar', 'sub_count', 'joined', 'description', 'view_count', 'links'],
@@ -365,7 +368,7 @@ class ytngChannel:
                         'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': [],
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
-    def __repr__(self): return f"<ytngChannel {self.id}>"
+    def __repr__(self): return f"<ytngChannel {getattr(self,'id','?')}>"
 
     def __init__(self, id):
         self.id = id
@@ -479,7 +482,7 @@ class ytngPlaylist:
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--playlist does not exist--',
                         'num_videos': 0, 'num_video_pages': 1, 'recent_videos': []}
 
-    def __repr__(self): return f"<ytngPlaylist {self.id}>"
+    def __repr__(self): return f"<ytngPlaylist {getattr(self,'id','?')}>"
 
     def __init__(self, id):
         self.id = id

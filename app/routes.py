@@ -180,9 +180,6 @@ def _channel_page(request, ch):
         next_page, prev_page = None, None
         if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
         if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
-        print(ch.num_video_pages)
-        print(next_page)
-        print(prev_page)
 
         return render_template('ytchannel.html', form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
