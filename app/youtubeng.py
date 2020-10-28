@@ -111,15 +111,15 @@ def propgroups(cl):
     propnames = [prop for props in cl.__propgroups__.values() for prop in props]
     cl.__propnames__ = propnames
     if not getattr(cl, '__prop_mappers__'): cl.__prop_mappers__ = {}
-    cl_init = cl.__init__
+    cl._propgroups_init = cl.__init__
 
-    @wraps(cl_init)
-    def init(self, *args, **kwargs):
-        cl_init(self, *args)
+    @wraps(cl.__init__)
+    def pginit(self, *args, **kwargs):
+        self._propgroups_init(*args)
         for k, v in kwargs.items():
             if k not in propnames: raise TypeError(f"__init__ got an unexpected keyword argument '{k}'")
             setattr(self, k, v)  # including None for uninteresting props
-    cl.__init__ = init
+    cl.__init__ = pginit
 
     def store_if_absent(self, prop, val):
         if getattr(self, f'_{prop}', ATTRFLAG) is ATTRFLAG: setattr(self, prop, val)
