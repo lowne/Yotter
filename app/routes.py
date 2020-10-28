@@ -165,7 +165,7 @@ def ytchannel(cid):
 
 def _channel_page(request, ch):
     with db.session.no_autoflush:
-        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
+        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or (not current_user.is_admin and ch.is_blocked):
             ch = ytChannel('NOTFOUND')._make_error('Channel not found')
         form = ChannelForm()  # TODO
         page = int(request.args.get('page', 1))
