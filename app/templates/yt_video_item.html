@@ -19,17 +19,19 @@
     </div>
     <div class="extra content">
         <span class="left floated">
-        {%if video.duration_human == "PREMIERING NOW" or video.duration_human == "LIVE"%}
+        {% if video.duration_human == "PREMIERING NOW" or video.duration_human == "LIVE" %}
             <i class="red circle icon"></i>
             LIVE
-        {%else%}
+        {% else %}
             <i class="calendar icon"></i>
             {{video.timestamp_human}}
         {% endif %}
         </span>
-        <span class="right floated">
-            <i class="eye icon"></i>
-            {{video.views_human}}
-        </span>
+        {% if video.views_human %}
+            <span class="right floated">
+                <i class="eye icon"></i>
+                {{video.views_human}}
+            </span>
+        {% endif %}
     </div>
 </div>

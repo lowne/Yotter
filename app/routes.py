@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 
 from app import app, db, yotterconfig, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
-from app.models import User, ytChannel, ytPlaylist, ytVideo
+from app.models import User, dbChannel, dbPlaylist, ytChannel, ytPlaylist, ytVideo
 from app.youtubeng import prop_mappers, logged
 
 # FIXME deprecated
@@ -28,7 +28,8 @@ utcnow = datetime.utcnow
 ##########################
 #         Config         #
 ##########################
-config = yotterconfig.get_config()
+config = yotterconfig.config
+
 
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
 
@@ -46,6 +47,29 @@ else:
     if config.proxy_images: prop_mappers['map_image_url'] = logged(lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url)))
     else: prop_mappers['map_image_url'] = _fix_thumbnail_hq
     if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
+
+
+class instance_data:
+    total_users = 0
+    active_users = 0
+    max_users = 0
+    registrations_allowed = False
+
+    @classmethod
+    def update(cls):
+        with db.session.no_autoflush:
+            q_users = db.session.query(User)
+            n_users = q_users.count()
+            users, now, n_active = q_users.all(), utcnow(), 0
+            for u in users:
+                s = (now - u.last_seen).total_seconds()
+                if s < (25 * 60): n_active = n_active + 1
+        cls.total_users = n_users
+        cls.active_users = n_active
+        cls.max_users = max(n_users, config.max_instance_users)
+        cls.registrations_allowed = not config.maintenance_mode and not config.max_instance_users == 0 and n_users < config.max_instance_users
+        return cls
+instance_data.update()
 
 
 def check_login(f):
@@ -71,6 +95,9 @@ def admin_required(f):
 @app.route('/')
 @app.route('/index')
 def index():
+    try:
+        if current_user.is_admin: return redirect(url_for('manage_admin_lists'))
+    except: pass
     if current_user.is_authenticated: return redirect(url_for('ytfeed'))
     if config.require_login: return app.login_manager.unauthorized()
     if config.restricted_mode: return redirect(url_for('ytgallery'))
@@ -79,8 +106,8 @@ def index():
 
 @app.route('/gallery', methods=['GET'])
 def ytgallery():
-    channels = ytChannel.query.filter_by(is_allowed=True).all()
-    playlists = ytPlaylist.query.filter_by(is_allowed=True).all()
+    channels = get_admin_list(ytChannel, is_allowed=True)
+    playlists = get_admin_list(ytPlaylist, is_allowed=True)
     return render_template('ytgallery.html', channels=channels, playlists=playlists)
 
 
@@ -174,7 +201,7 @@ def _channel_page(request, ch):
         next_page, prev_page = None, None
         if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
         if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
-        return render_template('ytchannel.html', form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
+        return render_template('ytchannel.html', show_admin_actions=True, form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
 
 @app.route('/playlist/<pid>', methods=['GET'])
@@ -206,7 +233,7 @@ def _playlist_page(request, pid):
         if page < pl.num_video_pages: next_page = f'{request.path}?page={page + 1}'
         if page > 1: prev_page = f'{request.path}?page={page - 1}'
 
-        return render_template('ytplaylist.html', form=form, playlist=pl, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
+        return render_template('ytplaylist.html', show_admin_actions=True, form=form, playlist=pl, channel=ch, videos=videos, include_channel_header=True, next_page=next_page, prev_page=prev_page)
 
 
 @app.route('/_user/<what>/<action>/<id>', methods=['POST'])
@@ -340,51 +367,13 @@ def ytimg(url):
     return response
 
 
-
-#########################
-#         admin         #
-#########################
-@app.route('/_admin/<what>/<where>/<action>/<id>', methods=['POST'])
-@admin_required
-def yt_admin_action(what, where, action, id):
-    attr = f'is_{where}'
-    if where != 'allowed' and where != 'blocked': return redir_error(405)
-    if what == 'channel':
-        obj = ytChannel(id)
-        name = obj.name
-    elif what == 'playlist':
-        obj = ytPlaylist(id)
-        name = obj.title
-    else: return redir_error(405)
-    if action != 'add' and action != 'remove': return redir_error(405)
-    print(obj.__dict__)
-    print(obj.is_allowed)
-    if obj.invalid: flash(f'{what} id "{id}" is not valid', 'error')
-    else:
-        curr = getattr(obj, f'is_{where}')
-        wanted = action == 'add'
-        if curr == wanted: flash(f'"{name}" already {"" if wanted else "not "} {where}', 'error')
-        else:
-            setattr(obj, f'is_{where}', wanted)
-            db.session.commit()
-            if wanted: flash(f'"{name} is now {where}!', 'success')
-            else: flash(f'"{name} is not {where} anymore', 'info')
-    return redirect(request.referrer)
-
-
 #########################
 #### General Logic ######
 #########################
-def registrations_allowed():
-    if config.maintenance_mode: return False
-    if config.max_instance_users == 0: return False
-    if db.session.query(User).count() >= config.max_instance_users: return False
-    return True
-
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated: return redirect(url_for('index'))
+    if not instance_data.update().registrations_allowed: return redirect(url_for('settings'))
 
     form = RegistrationForm()
     if form.validate_on_submit():
@@ -399,7 +388,7 @@ def register():
         flash('Congratulations, you are now a registered user!')
         return redirect(url_for('login'))
 
-    return render_template('register.html', title='Register', registrations=registrations_allowed(), form=form)
+    return render_template('register.html', title='Register', form=form)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -414,9 +403,9 @@ def login():
             return redirect(url_for('login'))
         if user.username == config.admin_user:
             user.set_admin_user()
-            db.session.commit()
         login_user(user, remember=form.remember_me.data)
         user.set_last_seen()
+        db.session.commit()
         next_page = request.args.get('next')
         if not next_page or url_parse(next_page).netloc != '':
             next_page = url_for('index')
@@ -433,48 +422,9 @@ def logout():
 
 @app.route('/settings')
 def settings():
-    if not current_user.is_authenticated: return app.login_manager.unauthorized()
-    if current_user.is_admin: pass
-    if not current_user.is_restricted:
-        with db.session.no_autoflush:
-            q_users = db.session.query(User)
-            users, now, n_active = q_users.all(), utcnow(), 0
-            for u in users:
-                s = (now - u.last_seen).total_seconds()
-                if s < (25 * 60): n_active = n_active + 1
-            info = {
-                "server_name": config.server_name,
-                "server_location": config.server_location,
-                "total_users": q_users.count(),
-                "active_users": n_active,
-                "max_users": max(q_users.count(), config.max_instance_users),
-                "registrations_allowed": registrations_allowed(),
-                "donate_url": config.donate_url,
-                "donate_yotter": config.donate_yotter,
-            }
-    return render_template('settings.html', title='Settings', info=info, admin=current_user.is_admin)
-
-
-'''@app.route('/clear_inactive_users/<phash>')
-@login_required
-def clear_inactive_users(phash):
-    ahash = User.query.filter_by(username=config['admin_user']).first().password_hash
-    if phash == ahash:
-        users = db.session.query(User).all()
-        for u in users:
-            if u.username == config['admin_user']:
-                continue
-            t = datetime.datetime.utcnow() - u.last_seen
-            t = math.floor(t.total_seconds())
-            max_old_s = config['max_old_user_days']*86400
-            if t > max_old_s:
-                user = User.query.filter_by(username=u.username).first()
-                print("deleted "+u.username)
-                db.session.delete(user)
-                db.session.commit()
-    else:
-        flash("You must be admin for this action")
-    return redirect(request.referrer)'''
+    # if current_user.is_admin: pass
+    # if not current_user.is_restricted: instance_data.update()
+    return render_template('settings.html', title='Settings', config=config, data=instance_data.update())
 
 
 # Export data into a JSON file. Later you can import the data.
@@ -491,6 +441,7 @@ def export_user_data():
             json.dump(data, outfile)
         return send_from_directory('.', filename, as_attachment=True)
     except: return redir_error(500)
+
 
 @app.route('/settings/import', methods=['GET', 'POST'])
 @login_required
@@ -512,18 +463,22 @@ def import_user_data():
         channel_data = re.findall('(UC[a-zA-Z0-9_-]{22})|(?<=user/)[a-zA-Z0-9_-]+', content)
         for cid in channel_data: current_user.yt_followed_channel_ids.add(cid)
         # TODO playlists?
+    db.session.commit()
     return redirect(request.referrer)
 
 
-@app.route('/settings/delete_subscriptions', methods=['DELETE'])
+@app.route('/settings/delete_subscriptions', methods=['POST'])
 @login_required
 def delete_user_subscriptions():
+    # for cid in list(current_user.yt_followed_channel_ids): current_user.yt_followed_channel_ids.remove(cid)
+    # print(current_user.yt_followed_channel_ids)
     current_user.yt_followed_channel_ids.clear()
     current_user.yt_followed_playlist_ids.clear()
+    db.session.commit()
     return redirect(request.referrer)
 
 
-@app.route('/settings/delete_user', methods=['DELETE'])
+@app.route('/settings/delete_user', methods=['POST'])
 @login_required
 def delete_user():
     user = User.query.filter_by(username=current_user.username).first()
@@ -533,12 +488,126 @@ def delete_user():
     return redirect(url_for('index'))
 
 
-@app.route('/status')
-def status():
-    count = db.session.query(User).count()
-    registrations = registrations_allowed()
-    # img = url_for('static', filename='img/' + ('open' if registrations else 'close') +'.png')
-    return render_template('status.html', title='STATUS', count=count, max=max(count, config.max_instance_users), registrations=registrations)
+#########################
+#         admin         #
+#########################
+def get_admin_list(cls, **kw):
+    dbcls = dbChannel if cls==ytChannel else dbPlaylist
+    return [cls(o.id) for o in dbcls.query.filter_by(**kw).all()]
+
+
+@app.route('/_admin/manage_lists')
+@admin_required
+def manage_admin_lists():
+    blocked_channels = get_admin_list(ytChannel, is_blocked=True)
+    allowed_channels = get_admin_list(ytChannel, is_allowed=True)
+    allowed_playlists = get_admin_list(ytPlaylist, is_allowed=True)
+    return render_template('ytadmin.html', show_admin_actions=True, blocked_channels=blocked_channels, allowed_channels=allowed_channels, allowed_playlists=allowed_playlists)
+
+@app.route('/_admin/<what>/<where>/<action>/<id>', methods=['POST'])
+@admin_required
+def yt_admin_action(what, where, action, id):
+    if where != 'allowed' and where != 'blocked': return redir_error(405)
+    opposite = 'blocked' if where == 'allowed' else 'allowed'
+    if what == 'channel':
+        obj = ytChannel(id)
+        name = obj.name
+    elif what == 'playlist':
+        obj = ytPlaylist(id)
+        name = obj.title
+    else: return redir_error(405)
+    if action != 'add' and action != 'remove': return redir_error(405)
+    if obj.invalid: flash(f'{what.capitalize()} id "{id}" is not valid', 'error')
+    else:
+        curr = getattr(obj, f'is_{where}')
+        wanted = action == 'add'
+        if curr == wanted: flash(f'{what.capitalize()} "{name}" already {"" if wanted else "not "} {where}', 'error')
+        else:
+            setattr(obj, f'is_{where}', wanted)
+            if what == 'channel' and wanted: setattr(obj, f'is_{opposite}', False)
+            db.session.commit()
+            if wanted: flash(f'{what.capitalize()} "{name}" is now {where}!', 'success')
+            else: flash(f'{what.capitalize()} "{name}" is not {where} anymore', 'info')
+    return redirect(request.referrer)
+
+
+@app.route('/_admin/export_lists', methods=['POST'])
+@admin_required
+def export_admin_lists():
+    blocked_channels = dbChannel.query.filter_by(is_blocked=True).all()
+    allowed_channels = dbChannel.query.filter_by(is_allowed=True).all()
+    allowed_playlists = dbPlaylist.query.filter_by(is_allowed=True).all()
+    data = {'description': 'Yotter restricted mode lists export', 'server_name': config.server_name,
+            'blocked_channel_ids': [ch.id for ch in blocked_channels],
+            'allowed_channel_ids': [ch.id for ch in allowed_channels],
+            'allowed_playlist_ids': [pl.id for pl in allowed_playlists],
+            }
+    filename = 'yotter_admin_export.json'
+    try:
+        with open(f'app/{filename}', 'w') as outfile:
+            json.dump(data, outfile)
+        return send_from_directory('.', filename, as_attachment=True)
+    except: return redir_error(500)
+
+
+@app.route('/_admin/import_lists', methods=['GET', 'POST'])
+@admin_required
+def import_admin_lists():
+    if 'file' not in request.files:  # check if the post request has the file part
+        flash('No file sent')
+        return redirect(url_for('settings'))
+    file = request.files['file']
+    if file.filename == '':  # if user does not select file, browser also submit an empty part without filename
+        flash('No selected file')
+        return redirect(url_for('settings'))
+    content = file.read().decode()
+    data = json.loads(content)
+    for cid in data['blocked_channel_ids']: ytChannel(cid).is_blocked = True
+    for cid in data['allowed_channel_ids']: ytChannel(cid).is_allowed = True
+    for pid in data['allowed_playlist_ids']: ytPlaylist(pid).is_allowed = True
+    db.session.commit()
+    flash(f"imported {len(data['blocked_channel_ids'])} blocked channels, {len(data['allowed_channel_ids'])} allowed channels, {len(data['allowed_playlist_ids'])} allowed playlists", 'success')
+    return redirect(request.referrer)
+
+
+@app.route('/_admin/clear_inactive_users', methods=['POST'])
+@admin_required
+def clear_inactive_users():
+    users, toremove, now, max_delta = db.session.query(User).all(), [], utcnow(), config.max_old_user_days * 86400
+    for u in users:
+        if u.is_admin: continue
+        delta = (now - u.last_seen).total_seconds()
+        if delta > max_delta:
+            flash(f'Deleted user {u.username} - inactive for {int(delta/86400)} days', 'warning')
+            toremove.append(u)
+    for u in toremove: db.session.delete(u)
+    db.session.commit()
+    return redirect(request.referrer)
+
+
+@app.route('/_admin/purge_cache', methods=['POST'])
+@admin_required
+def purge_cache():
+    fscache.clear()
+    cache.clear()
+    flash(f'Cache purged', 'warning')
+    return redirect(request.referrer)
+
+
+@app.route('/_admin/purge_db', methods=['POST'])
+@admin_required
+def purge_db():
+    toremove = []
+    channels = db.session.query(dbChannel).all()
+    for ch in channels:
+        if not ch.is_allowed and not ch.is_blocked and not ch.followers: toremove.append(ch)
+    playlists = db.session.query(dbPlaylist).all()
+    for pl in playlists:
+        if not pl.is_allowed and not pl.followers: toremove.append(pl)
+    for o in toremove: db.session.delete(o)
+    db.session.commit()
+    flash(f'Purged {len(toremove)} entries from the database', 'warning')
+    return redirect(request.referrer)
 
 
 @app.route('/error/<int:errno>')

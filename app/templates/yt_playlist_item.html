@@ -1,4 +1,5 @@
 <div class="ui card">
+    {{ actions.admin_restricted_mode(playlist, what='playlist', user=current_user, show_admin_actions=show_admin_actions) }}
     <a class="image" href="{{url_for('ytplaylist', pid=playlist.id)}}">
         <img src="{{playlist.thumbnail}}">
     </a>
@@ -6,7 +7,7 @@
         <a class="header" href="{{url_for('ytplaylist', pid=playlist.id)}}">{{playlist.title}}</a>
         <div class="meta">
           <span class="right floated star">
-              <i class="folder open icon"></i>
+              <i class="video icon"></i>
               {{playlist.num_videos}} videos
           </span>
           <a class="break-word" href="{{url_for('ytchannel', cid=playlist.cid)}}">

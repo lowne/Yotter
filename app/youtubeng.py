@@ -18,6 +18,7 @@ sys.path.append(__ytl_dir)
 import youtube
 import youtube.playlist
 import youtube.channel
+import youtube.watch
 
 
 def utcnow(): return datetime.datetime.now(datetime.timezone.utc)

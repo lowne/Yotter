@@ -19,8 +19,8 @@
     </form>
 {% endmacro %}
 
-{% macro admin_restricted_mode(obj, what='', user=None) %}
-{% if user.is_admin and not obj.invalid %}
+{% macro admin_restricted_mode(obj, what='', user=None, show_admin_actions=None) %}
+{% if user.is_admin and show_admin_actions and not obj.invalid %}
     <div class="ui orange inverted raised horizontal compact segments">
     <div class="ui orange inverted raised segment">
     {{ submit(url_for('yt_admin_action', what=what, where='allowed', action='remove' if obj.is_allowed else 'add', id=obj.id),

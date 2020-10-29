@@ -11,6 +11,7 @@ nginxVideoStream: true
 """
 
 
+
 class DEFAULT_CONFIG:
     server_name = ""
     max_instance_users = 0
@@ -30,11 +31,7 @@ class DEFAULT_CONFIG:
     restricted_mode = False
 
 
-
 default_config = {k: v for k, v in DEFAULT_CONFIG.__dict__.items() if not k.startswith('_')}
 file_config = yaml_load(open('yotter-config.yaml'))
 dict_config = dict(default_config, **file_config)  # merge
 config = namedtuple('config', dict_config.keys())(*dict_config.values())
-
-def get_config():
-    return config

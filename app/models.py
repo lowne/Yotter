@@ -4,7 +4,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
 from app.youtubeng import ytVideo, ytChannel, ytPlaylist
-utcnow=datetime.utcnow
+utcnow = datetime.utcnow
 
 user_channel_assoc = db.Table('user_channel_assoc',
                               db.Column('channel_rowid', db.Integer, db.ForeignKey('yt_channel.rowid')),
@@ -107,7 +107,6 @@ def link_db(cls, dbcls):
         setattr(self, '_db_obj', obj)
         return obj
     setattr(cls, 'db_obj', property(dbget, None, None, f'db-backed object'))
-
     # for prop in db.class_mapper(dbcls).column_attrs.keys():
     # also proxy relationships
     for prop in db.class_mapper(dbcls).attrs.keys():

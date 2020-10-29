@@ -15,7 +15,7 @@
         </a>
         </h4>
     </div>
-    {{ actions.admin_restricted_mode(playlist, what='playlist', user=current_user) }}
+    {{ actions.admin_restricted_mode(playlist, what='playlist', user=current_user, show_admin_actions=show_admin_actions) }}
     {% if playlist.description %}
     <div class="ui vertical segment">
         <p>{{playlist.description}}</p>
@@ -33,27 +33,26 @@
     {{ actions.user_sub(playlist, what='playlist', user=current_user, subs=current_user.yt_followed_playlist_ids) }}
     </div>
 </div>
+<br>
+<br>
+{% if videos %}
+<div class="ui centered cards">
+    {% for video in videos %}
+        {% include 'yt_video_item.html' %}
+    {% endfor %}
+</div>
+{% else %}
+    {% include '_empty_feed.html' %}
+{% endif %}
 
-    <br>
-    <br>
-    {% if videos %}
-    <div class="ui centered cards">
-        {% for video in videos %}
-            {% include 'yt_video_item.html' %}
-        {% endfor %}
-    </div>
-    {% else %}
-        {% include '_empty_feed.html' %}
+<br>
+<div class="ui center aligned text container">
+    {% if prev_page %}
+    <a href="{{prev_page}}"> <button class="ui left attached button"><i class="angle red left icon"></i></button> </a>
     {% endif %}
-
-    <br>
-    <div class="ui center aligned text container">
-        {% if prev_page %}
-        <a href="{{prev_page}}"> <button class="ui left attached button"><i class="angle red left icon"></i></button> </a>
-        {% endif %}
-        {% if next_page %}
-        <a href="{{next_page}}"> <button class="right attached ui button"><i class="angle red right icon"></i></button></a>
-        {% endif %}
-    </div>
-    <br>
+    {% if next_page %}
+    <a href="{{next_page}}"> <button class="right attached ui button"><i class="angle red right icon"></i></button></a>
+    {% endif %}
+</div>
+<br>
 {% endblock %}

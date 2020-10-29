@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import 'yt_actions.html' as actions %}
+
+{% block content %}
+
+<div style="padding: 1.3em;" class="ui one column centered grid">
+    <div class="ui red statistic">
+        <div class="value">
+            {{ blocked_channels|length }}
+        </div>
+        <div class="label">
+            blocked channels
+        </div>
+    </div>
+</div>
+
+<div class="ui text container">
+    <div class="ui centered cards">
+        {% for channel in blocked_channels %}
+            {% include 'yt_channel_item.html' %}
+        {% endfor %}
+    </div>
+</div>
+
+<div style="padding: 1.3em;" class="ui one column centered grid">
+    <div class="ui red statistic">
+        <div class="value">
+            {{ allowed_channels|length }}
+        </div>
+        <div class="label">
+            allowed channels
+        </div>
+    </div>
+</div>
+
+<div class="ui text container">
+    <div class="ui centered cards">
+        {% for channel in allowed_channels %}
+            {% include 'yt_channel_item.html' %}
+        {% endfor %}
+    </div>
+</div>
+
+<div style="padding: 1.3em;" class="ui one column centered grid">
+    <div class="ui red statistic">
+        <div class="value">
+            {{ allowed_playlists|length }}
+        </div>
+        <div class="label">
+            allowed playlists
+        </div>
+    </div>
+</div>
+
+<div class="ui text container">
+    <div class="ui centered cards">
+        {% for playlist in allowed_playlists %}
+            {% include 'yt_playlist_item.html' %}
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}
