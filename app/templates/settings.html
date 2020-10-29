@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'yt_actions.html' as actions %}
 
 {% block content %}
 <br>
@@ -19,10 +20,7 @@
             </div>
         </h3>
         <p>You are <a href="{{url_for('ytsubscriptions')}}">currently subscribed</a> to {{ current_user.yt_followed_channel_ids|length }} channels and {{ current_user.yt_followed_playlist_ids|length }} playlists</p>
-        <form class="ui form" action="{{url_for('export_user_data')}}" method="POST">
-            <i class="download large icon"></i>
-            <button type="submit" class="ui primary button">Export</button>
-        </form>
+        {{ actions.submit(url_for('export_user_data'), label='Export', class='primary', icon='download large') }}
     </div>
     <div class="ui blue segment">
         <h3 class="ui header">
@@ -82,7 +80,9 @@
             <div class="ui toggle checkbox">
                 <input type="checkbox" id="toggle">
                 <label>I want to delete my subscriptions</label>
-                <div class="control-me"><a href="{{url_for('delete_user_subscriptions')}}"><button class="ui red button">Clear subscriptions</button></a></div>
+                <div class="control-me">
+                    {{ actions.submit(url_for('delete_user_subscriptions'), label='Clear subscriptions', class='red', icon='trash') }}
+                </div>
             </div>
           </div>
     </div>
@@ -93,7 +93,9 @@
             <div class="ui toggle checkbox">
                 <input type="checkbox" id="toggle">
                 <label>I want to delete my account</label>
-                <div class="control-me"><a href="{{url_for('delete_user')}}"><button class="ui red button">Delete account</button></a></div>
+                <div class="control-me">
+                    {{ actions.submit(url_for('delete_user'), label='Delete account', class='red', icon='user times') }}
+                </div>
             </div>
         </div>
     </div>

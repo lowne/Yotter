@@ -15,7 +15,7 @@
         </a>
         </h4>
     </div>
-    {{ actions.admin(playlist, what='playlist', user=current_user) }}
+    {{ actions.admin_restricted_mode(playlist, what='playlist', user=current_user) }}
     {% if playlist.description %}
     <div class="ui vertical segment">
         <p>{{playlist.description}}</p>

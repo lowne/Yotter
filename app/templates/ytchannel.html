@@ -10,7 +10,7 @@
           {{channel.name}}
         </h2>
     </div>
-    {{ actions.admin(channel, what='channel', user=current_user) }}
+    {{ actions.admin_restricted_mode(channel, what='channel', user=current_user) }}
     <div class="ui vertical segment">
         <p>{{channel.description}}</p>
     </div>
