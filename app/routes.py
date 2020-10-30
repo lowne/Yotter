@@ -88,9 +88,7 @@ def check_login(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        try: is_admin = current_user.is_admin
-        except AttributeError: is_admin = False
-        if not is_admin: return redir_error(404)
+        if not current_user.is_admin: return redir_error(404)
         return f(*args, **kwargs)
     return decorated
 
@@ -102,9 +100,8 @@ def admin_required(f):
 @app.route('/')
 @app.route('/index')
 def index():
-    try:
-        if current_user.is_admin: return redirect(url_for('manage_admin_lists'))
-    except AttributeError: pass
+    print('INDEX')
+    if current_user.is_admin: return redirect(url_for('manage_admin_lists'))
     if current_user.is_authenticated: return redirect(url_for('ytfeed'))
     if config.require_login: return app.login_manager.unauthorized()
     if config.restricted_mode: return redirect(url_for('ytgallery'))
@@ -113,6 +110,7 @@ def index():
 
 @app.route('/gallery', methods=['GET'])
 def ytgallery():
+    print('GALLERY')
     channels = get_admin_list(ytChannel, is_allowed=True)
     playlists = get_admin_list(ytPlaylist, is_allowed=True)
     return render_template('ytgallery.html', channels=channels, playlists=playlists)
@@ -199,7 +197,7 @@ def ytchannel(cid):
 
 def _channel_page(request, ch):
     with db.session.no_autoflush:
-        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or (not current_user.is_admin and ch.is_blocked):
+        if (config.restricted_mode and current_user.is_restricted and not ch.is_allowed) or (not current_user.is_admin and ch.is_blocked):
             ch = ytChannel('NOTFOUND')._make_error('Channel not found')
         form = ChannelForm()  # TODO
         page = int(request.args.get('page', 1))
@@ -226,7 +224,8 @@ def _playlist_page(request, pid):
     pl = ytPlaylist(pid)
     ch = ytChannel(pl.cid)
     with db.session.no_autoflush:
-        if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and (not pl.is_allowed or ch.is_allowed)) or ch.is_blocked:  # or pl.is_blocked:
+        # in restricted mode, all playlists from allowed channels are allowed
+        if (config.restricted_mode and current_user.is_restricted and not (pl.is_allowed or ch.is_allowed)) or (not current_user.is_admin and ch.is_blocked):  # or pl.is_blocked:
             pl = ytPlaylist('NOTFOUND')._make_error('Playlist not found')
             ch = ytChannel('NOTFOUND')._make_error('Channel not found')
 

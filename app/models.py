@@ -1,6 +1,6 @@
 from datetime import datetime
 from app import db, login
-from flask_login import UserMixin
+from flask_login import AnonymousUserMixin, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.ext.associationproxy import association_proxy
 from app.youtubeng import ytVideo, ytChannel, ytPlaylist
@@ -16,6 +16,20 @@ user_playlist_assoc = db.Table('user_playlist_assoc',
                                db.Column('playlist_rowid', db.Integer, db.ForeignKey('yt_playlist.rowid')),
                                db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
                                )  # Association: PLAYLIST --followed by--> [USERS]
+
+
+class AnonymousUser(AnonymousUserMixin):
+    is_admin = False
+    is_restricted = True
+    db_followed_channels = set()
+    yt_followed_channel_ids = set()
+    yt_followed_channels = set()
+    db_followed_playlists = set()
+    yt_followed_playlists = set()
+    yt_followed_playlist_ids = set()
+
+
+login.anonymous_user = AnonymousUser
 
 
 class User(UserMixin, db.Model):
