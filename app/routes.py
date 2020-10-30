@@ -29,6 +29,11 @@ utcnow = datetime.utcnow
 #         Config         #
 ##########################
 from config import config
+if config.behind_https_proxy:
+    _url_for = url_for
+    def url_for(*a, **kw):
+        return _url_for(*a, _scheme='https', _external=True, **kw)
+# current_app.config['PREFERRED_URL_SCHEME']
 
 
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
@@ -483,9 +488,9 @@ def delete_user_subscriptions():
 @login_required
 def delete_user():
     user = User.query.filter_by(username=current_user.username).first()
+    logout_user()
     db.session.delete(user)
     db.session.commit()
-    logout_user()
     return redirect(url_for('index'))
 
 
