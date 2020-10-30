@@ -12,9 +12,8 @@ from app import cache, fscache
 #from youtube_search import YoutubeSearch
 
 import sys
-import os
-__ytl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'youtube-local')
-sys.path.append(__ytl_dir)
+from app import ytlshim
+sys.modules['youtube'] = ytlshim
 import youtube
 import youtube.playlist
 import youtube.channel
