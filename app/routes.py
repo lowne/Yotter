@@ -14,7 +14,7 @@ from werkzeug.datastructures import Headers
 from werkzeug.urls import url_parse
 from werkzeug.utils import secure_filename
 
-from app import app, db, yotterconfig, cache, fscache
+from app import app, db, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
 from app.models import User, dbChannel, dbPlaylist, ytChannel, ytPlaylist, ytVideo
 from app.youtubeng import prop_mappers, logged
@@ -28,7 +28,7 @@ utcnow = datetime.utcnow
 ##########################
 #         Config         #
 ##########################
-config = yotterconfig.config
+from config import config
 
 
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
@@ -435,11 +435,11 @@ def export_user_data():
     data = {'description': 'Yotter data export', 'username': current_user.username,
             'followed_channel_ids': list(current_user.yt_followed_channel_ids),
             'followed_playlist_ids': list(current_user.yt_followed_playlist_ids)}
-    filename = 'yotter_data_export.json'
+    filename = f'yotter_data_export.json'
     try:
-        with open(f'app/{filename}', 'w') as outfile:
+        with open(f'{config.temp_dir}/{filename}', 'w') as outfile:
             json.dump(data, outfile)
-        return send_from_directory('.', filename, as_attachment=True)
+        return send_from_directory(config.temp_dir, filename, as_attachment=True)
     except: return redir_error(500)
 
 
@@ -544,9 +544,9 @@ def export_admin_lists():
             }
     filename = 'yotter_admin_export.json'
     try:
-        with open(f'app/{filename}', 'w') as outfile:
+        with open(f'{config.temp_dir}/{filename}', 'w') as outfile:
             json.dump(data, outfile)
-        return send_from_directory('.', filename, as_attachment=True)
+        return send_from_directory(config.temp_dir, filename, as_attachment=True)
     except: return redir_error(500)
 
 

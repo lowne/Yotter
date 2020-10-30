@@ -1,12 +1,13 @@
 from flask import Flask
-from config import Config
+from config import config, FlaskConfig
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_caching import Cache
 
 app = Flask(__name__)
-app.config.from_object(Config)
+app.config.from_object(FlaskConfig)
+print(f'Using database {app.config["SQLALCHEMY_DATABASE_URI"]}')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login = LoginManager(app)
@@ -30,10 +31,10 @@ class KeyCache(Cache):
         return decorator
 
 
-cache = KeyCache(app, config={'CACHE_TYPE': 'simple', 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
+cache = KeyCache(app, config={'CACHE_TYPE': 'simple', 'CACHE_THRESHOLD': 5000, 'CACHE_DEFAULT_TIMEOUT': 86400})
 
-
-fscache = KeyCache(app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': 'app/cache', 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
+# os.makedirs(config.cache_dir)
+fscache = KeyCache(app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': config.cache_dir, 'CACHE_THRESHOLD': 10000, 'CACHE_DEFAULT_TIMEOUT': 86400})
 
 
 from app import routes, models, errors

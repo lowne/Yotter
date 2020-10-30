@@ -1,23 +1,41 @@
-
-server_name: "yotter.xyz"
+################### CONFIG
+# set to true when running Yotter behind a reverse proxy that provides https termination
+behind_https_proxy: false
 
 # set to 0 to disable new registrations
 max_instance_users: 100
 
-# eg "Germany"
-server_location: "?"
+# When this username logs in, it will be set as an admin user
+admin_user: "admin_username"
 
-# Deprecated
-#restrictPublicUsage: true
+# When false, allow anonymous users. Note that anonymous users are considered restricted wrt restricted mode.
+require_login: true
 
-# Deprecated
-#nginxVideoStream: true
+# When true, restricted (and anonymous, if allowed) users will only be able to watch a selection of channels/playlists curated by the admin user.
+restricted_mode: false
 
+# Used by the admin interface to clear inactive users
+max_old_user_days: 60
+
+
+######################## STORAGE
+temp_dir: tmp
+sqlite_db_file: yotter.db
+
+#database_url: ""
+
+cache_dir: tmp/cache
+#cache_backend:
+#cache_url:
+
+
+######################## NET
 # Whether to proxy images (thumbnails etc.) through the server
 proxy_images: true
 
 # Whether to proxy video (or audio) streams through the server
 proxy_videos: true
+
 
 # Url for external proxy server
 # If this is unset and `proxy_*` is set to true, requests will be proxied internally.
@@ -30,20 +48,23 @@ proxy_videos: true
 #
 # The example below works for the nginx configuration in `SELF-HOSTING.md`
 #
-#external_proxy: "https://my.nginx.instance{path}?{query}&host={netloc}"
+# external_proxy: "https://my.nginx.instance{path}?{query}&host={netloc}"
+external_proxy: ""
 
-# When true, also disables user registration
-maintenance_mode: false
+
+###################### UI
+server_name: "yotter.example.org"
+
+# eg "Germany"
+server_location: "?"
+
+# Admin message
 show_admin_message: false
 admin_message_title: "Message from the admin"
 admin_message: "Message from the admin text"
-admin_user: "admin_username"
-max_old_user_days: 60
+
+# When true, also disables user registration
+maintenance_mode: false
+
 donate_url: ""
 donate_yotter: true
-
-# Allow anonymous users. Note that anonymous users are restricted wrt restricted_mode.
-require_login: true
-
-# When true, restricted users will only be able to watch a selection of channels/playlists curated by the admin user.
-restricted_mode: false
