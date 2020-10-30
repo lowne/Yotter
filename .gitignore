@@ -116,7 +116,6 @@ env.bak/
 venv.bak/
 
 # Migrations
-migrations/
 .migrations/
 
 # Database
@@ -147,8 +146,11 @@ dmypy.json
 # Added
 yotter-config.yaml
 data_export.json
+yotter_data_export.json
+yotter_admin_export.json
 .env
 .envo
+/var
 SELF-HOSTING.md
 README.md
 /misc
