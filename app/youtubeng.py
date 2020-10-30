@@ -293,7 +293,7 @@ class ytVideo(ytBase):
 
         # override everything else
         self._del_ts_human()  # we have .published again
-        self.setprop('title', ['title'])
+        self.setprop('title', info['title'])
         self.setprop('channel_name', info['author'])
         self.setprop('channel_url', info['author_url'])
         self.setprop('cid', info['author_id'])
