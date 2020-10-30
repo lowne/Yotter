@@ -69,7 +69,6 @@ class instance_data:
         cls.max_users = max(n_users, config.max_instance_users)
         cls.registrations_allowed = not config.maintenance_mode and not config.max_instance_users == 0 and n_users < config.max_instance_users
         return cls
-instance_data.update()
 
 
 def check_login(f):
@@ -83,7 +82,9 @@ def check_login(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not current_user.is_admin: return redir_error(404)
+        try: is_admin = current_user.is_admin
+        except AttributeError: is_admin = False
+        if not is_admin: return redir_error(404)
         return f(*args, **kwargs)
     return decorated
 
@@ -97,7 +98,7 @@ def admin_required(f):
 def index():
     try:
         if current_user.is_admin: return redirect(url_for('manage_admin_lists'))
-    except: pass
+    except AttributeError: pass
     if current_user.is_authenticated: return redirect(url_for('ytfeed'))
     if config.require_login: return app.login_manager.unauthorized()
     if config.restricted_mode: return redirect(url_for('ytgallery'))
