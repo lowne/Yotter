@@ -4,7 +4,6 @@ import re
 import urllib
 from functools import wraps
 from operator import attrgetter
-import bleach
 
 import requests
 from flask import Response
@@ -12,7 +11,6 @@ from flask import render_template, flash, redirect, url_for, request, send_from_
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.datastructures import Headers
 from werkzeug.urls import url_parse
-from werkzeug.utils import secure_filename
 
 from app import app, db, cache, fscache
 from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
@@ -22,6 +20,9 @@ from app.youtubeng import prop_mappers, logged
 # FIXME deprecated
 from youtube import search as yts
 
+from bleach import linkify
+from bleach.sanitizer import Cleaner
+unlinkify = Cleaner(tags=["abbr", "acronym", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"]).clean
 
 utcnow = datetime.utcnow
 
@@ -315,14 +316,14 @@ def _video_page(request, video):
         video = ytVideo('NOTFOUND')._make_error('Video not found')
 
     # Markup description
-    description = Markup(bleach.linkify(video.description.replace("\n", "<br>")))
+    description = Markup(linkify(video.description.replace("\n", "<br>")))
 
     return render_template('ytvideo.html', video=video, description=description, config=config, comments=[])
 
 
 def markupString(string):
     string = string.replace("\n\n", "<br><br>").replace("\n", "<br>")
-    string = bleach.linkify(string)
+    string = linkify(string)
     string = string.replace("https://youtube.com/", "")
     string = string.replace("https://www.youtube.com/", "")
     string = string.replace("https://twitter.com/", "/u/")
