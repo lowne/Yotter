@@ -228,7 +228,7 @@ class ytVideo(ytBase):
             return {
                 'src': prop_mappers['map_stream_url'](fmt['url']),
                 'type': f"video/{fmt['ext']}",
-                'label': f'{fmt["quality"]}P',
+                'label': f'{fmt["ext"]} {fmt["quality"]}P',
                 'quality': fmt['quality'],
                 'height': fmt['height'],
                 'width': fmt['width'],
