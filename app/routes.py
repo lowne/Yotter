@@ -329,7 +329,14 @@ def markupString(string):
     return Markup(string)
 
 
-## PROXY videos through Yotter server to the client.
+@app.route('/_upd/watched', methods=['POST'])
+def update_watched():
+    data = dict(request.form)
+    current_user.set_video_watched_progress(data['vid'], data['progress'], data['duration'])
+    return 'OK'
+
+
+#  PROXY videos through Yotter server to the client.
 @app.route('/stream/<path:url>', methods=['GET', 'POST'])
 @check_login
 def ytstream(url):
@@ -359,6 +366,7 @@ def download_file(streamable):
         stream.raise_for_status()
         for chunk in stream.iter_content(chunk_size=8192):
             yield chunk
+
 
 # Proxy yt images through server
 @fscache.memoize(timeout=86400)

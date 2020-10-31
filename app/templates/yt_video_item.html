@@ -13,6 +13,15 @@
                 {{ video.duration_human }}
             </div>
             {% endif %}
+            {% if current_user.has_watched_video(video.id) %}
+            <div class="bottom left attached ui circular label" style="background-color: #FF0C; color: black">
+                <i class="ui eye icon"></i>watched
+            </div>
+            {% else %}
+            <div class="bottom left attached ui circular label" style="background-color: #0002; color: white">
+                <i class="ui eye slash icon"></i>
+            </div>
+            {% endif %}
     </a>
     <div class="content" style="height: 5em">
         <a class="header" href="{{url_for('ytvideo', id=video.id, _method='GET')}}">{{video.title}}</a>

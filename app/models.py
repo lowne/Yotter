@@ -22,26 +22,31 @@ login.anonymous_user = AnonymousUser
 
 
 class User(UserMixin, db.Model):
+    def __repr__(self): return f'<User {self.username}>'
     rowid = db.Column(db.Integer, primary_key=True)
     def get_id(self): return str(self.rowid)
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
     created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
     # updated_on = db.Column(db.DateTime(), default=utcnow, onupdate=utcnow)
     password_hash = db.Column(db.String(128))
+    def set_password(self, password): self.password_hash = generate_password_hash(password)
+    def check_password(self, password): return check_password_hash(self.password_hash, password)
     last_seen = db.Column(db.DateTime(), default=utcnow)
+    def set_last_seen(self): self.last_seen = utcnow()
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
+    def set_admin_user(self): self.is_admin = True
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
+    # def set_restricted_user(self): self.is_restricted = True
 
     yt_channel_subscriptions = db.relationship('dbChannelSubscription', collection_class=set, back_populates='user', lazy=True, cascade="all, delete, delete-orphan")
     # proxy the 'cid' attribute (which is in turn proxied) from the 'yt_channel_subscriptions' relationship
     yt_subscribed_channel_ids = association_proxy('yt_channel_subscriptions', 'cid', creator=lambda id: dbChannelSubscription(cid=id), cascade_scalar_deletes=True)
-
     @property
     def yt_subscribed_channels(self): return frozenset([ytChannel(id) for id in self.yt_subscribed_channel_ids])
 
     def get_channel_subscription_time(self, cid):
-        for s in self.yt_channel_subscriptions:
-            if s.cid == cid: return s.created_on
+        for sub in self.yt_channel_subscriptions:
+            if sub.cid == cid: return sub.created_on
 
     yt_playlist_follows = db.relationship('dbPlaylistFollow', collection_class=set, back_populates='user', lazy=True, cascade="all, delete, delete-orphan")
     yt_followed_playlist_ids = association_proxy('yt_playlist_follows', 'pid', creator=lambda id: dbPlaylistFollow(pid=id), cascade_scalar_deletes=True)
@@ -50,25 +55,50 @@ class User(UserMixin, db.Model):
     def yt_followed_playlists(self): return frozenset([ytPlaylist(id) for id in self.yt_followed_playlist_ids])
 
     def get_playlist_follow_time(self, pid):
-        for s in self.yt_playlist_follows:
-            if s.pid == pid: return s.created_on
+        for fol in self.yt_playlist_follows:
+            if fol.pid == pid: return fol.created_on
 
-    def __repr__(self): return f'<User {self.username}>'
+    yt_videos_watched = db.relationship('dbVideoWatched', collection_class=set, back_populates='user', lazy=True, cascade='all, delete, delete-orphan')
+    yt_watched_video_ids = association_proxy('yt_videos_watched', 'vid', creator=lambda id: dbVideoWatched(vid=id), cascade_scalar_deletes=True)
 
-    def set_last_seen(self):
-        self.last_seen = utcnow()
+    @property
+    def yt_watched_videos(self):
+        res = []
+        for db_video_watched in self.yt_videos_watched:
+            if db_video_watched.duration * 0.9 < db_video_watched.watched_progress:
+                res.append(ytVideo(db.db_video_watched.vid))
+        return frozenset(res)
 
-    def set_admin_user(self):
-        self.is_admin = True
+    def _get_vw(self, vid):
+        for w in self.yt_videos_watched:
+            if w.vid == vid: return w
 
-    def set_restricted_user(self):
-        self.is_restricted = True
+    def get_video_last_watched(self, vid):
+        vw = self._get_vw(vid)
+        return vw.updated_on if vw else None
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+    def get_video_watched_progress(self, vid):
+        vw = self._get_vw(vid)
+        return vw.watched_progress if vw else 0
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+    def set_video_watched_progress(self, vid, progress, duration):
+        vw = self._get_vw(vid)
+        if not vw:
+            vw = dbVideoWatched(user=self, vid=vid, duration=duration, watched_progress=progress)
+            db.session.add(vw)
+        else:
+            vw.watched_progress = progress
+            vw.duration = duration
+        db.session.commit()
+
+    def has_watched_video(self, vid):
+        vw = self._get_vw(vid)
+        print(f'HAS {self} watched {vid}? ={vw}')
+        if vw:
+            print(dir(vw))
+            print(vw.duration)
+            print(vw.watched_progress)
+        return (vw.duration or 99999) * 0.9 < vw.watched_progress if vw else False
 
 
 @login.user_loader
@@ -94,8 +124,21 @@ class dbPlaylistFollow(db.Model):
     playlist_rowid = db.Column(db.Integer, db.ForeignKey('yt_playlist.rowid'), primary_key=True)
     created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
     db_playlist = db.relationship('dbPlaylist', back_populates='user_follows', lazy=True)
-    pid = association_proxy('db_playlist', 'pid', creator=lambda id: dbPlaylist.load(id))
+    pid = association_proxy('db_playlist', 'id', creator=lambda id: dbPlaylist.load(id))
     user = db.relationship('User', back_populates='yt_playlist_follows', lazy=True)
+
+
+class dbVideoWatched(db.Model):
+    __tablename__ = 'user_video_assoc'
+    user_rowid = db.Column(db.Integer, db.ForeignKey('user.rowid'), primary_key=True)
+    video_rowid = db.Column(db.Integer, db.ForeignKey('yt_video.rowid'), primary_key=True)
+    created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
+    updated_on = db.Column(db.DateTime(), default=utcnow, onupdate=utcnow)
+    watched_progress = db.Column(db.Integer, default=0)
+    db_video = db.relationship('dbVideo', back_populates='user_watch_entries', lazy=True)
+    vid = association_proxy('db_video', 'id', creator=lambda id: dbVideo.load(id))
+    duration = association_proxy('db_video', 'duration')
+    user = db.relationship('User', back_populates='yt_videos_watched', lazy=True)
 
 
 class dbBase(object):
@@ -108,7 +151,6 @@ class dbBase(object):
     def load(cls, id):
         with db.session.no_autoflush:
             return db.session.query(cls).filter(cls.id == id).first() or cls(id=id)
-
 
 
 class dbChannel(dbBase, db.Model):
@@ -127,9 +169,12 @@ class dbPlaylist(dbBase, db.Model):
     user_follows = db.relationship('dbPlaylistFollow', collection_class=set, back_populates='db_playlist', lazy=True)
     followers = association_proxy('user_follows', 'user')
 
+
 class dbVideo(dbBase, db.Model):
     __tablename__ = 'yt_video'
-
+    duration = db.Column(db.Integer, default=99999)
+    user_watch_entries = db.relationship('dbVideoWatched', collection_class=set, back_populates='db_video', lazy=True)
+    watchers = association_proxy('user_watch_entries', 'user')
 
 def link_db(cls, dbcls):
     def dbget(self):
@@ -155,3 +200,4 @@ def link_db(cls, dbcls):
 link_db(ytChannel, dbChannel)
 link_db(ytPlaylist, dbPlaylist)
 link_db(ytVideo, dbVideo)
+
