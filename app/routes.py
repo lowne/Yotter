@@ -419,8 +419,8 @@ def login():
         if user is None or not user.check_password(form.password.data):
             flash('Invalid username or password')
             return redirect(url_for('login'))
-        if user.username == config.admin_user:
-            user.set_admin_user()
+        if user.username == config.admin_user: user.is_admin = True
+        elif user.username in config.restricted_users: user.is_restricted = True
         login_user(user, remember=form.remember_me.data)
         user.set_last_seen()
         db.session.commit()

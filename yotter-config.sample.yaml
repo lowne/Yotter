@@ -6,13 +6,18 @@ behind_https_proxy: false
 max_instance_users: 100
 
 # When this username logs in, it will be set as an admin user
-admin_user: "admin_username"
+admin_user: admin_username
 
 # When false, allow anonymous users. Note that anonymous users are considered restricted wrt restricted mode.
 require_login: true
 
 # When true, restricted (and anonymous, if allowed) users will only be able to watch a selection of channels/playlists curated by the admin user.
 restricted_mode: false
+
+# These usernames will be set as restricted users
+restricted_users:
+  - a_restricted_username
+  - another_restricted_one
 
 # Used by the admin interface to clear inactive users
 max_old_user_days: 60

@@ -9,6 +9,7 @@ class DEFAULT_CONFIG:
     behind_https_proxy = False
     max_instance_users = 0
     admin_user = ""
+    restricted_users = []
     require_login = True
     restricted_mode = False
 

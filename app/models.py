@@ -37,7 +37,6 @@ class User(UserMixin, db.Model):
     last_seen = db.Column(db.DateTime(), default=utcnow)
     def set_last_seen(self): self.last_seen = utcnow()
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
-    def set_admin_user(self): self.is_admin = True
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
     # def set_restricted_user(self): self.is_restricted = True
 
