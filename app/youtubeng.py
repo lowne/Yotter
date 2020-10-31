@@ -315,6 +315,21 @@ class ytVideo(ytBase):
     @fscache.memoize(timeout=1)
     def _get_from_lists(self): return {'badges': []}
 
+    @fscache.memoize(timeout=1)
+    def _get_ts_human(self):
+        # TODO 'Scheduled', 'LIVE'
+        return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
+
+    @fscache.memoize(timeout=1)
+    def _get_dur_human(self): return {'duration_human': ''}
+
+    @property
+    def views_human(self): return intword(self.view_count)
+
+    # TODO
+    @cache.memoize(timeout=1)
+    def _get_NYI(self): pass
+
     # TODO
     def get_comments(self, sort=0, offset=0):
         comments = youtube.comments.video_comments(self.id, sort=0, offset=0, lc='', secret_key='')
@@ -324,19 +339,10 @@ class ytVideo(ytBase):
             cmnt['thumbnail'] = prop_mappers['map_image_url'](cmnt['thumbnail'])
         return comments
 
-    @cache.memoize(timeout=1)
-    def _get_NYI(self): pass
 
-    @fscache.memoize(timeout=1)
-    def _get_ts_human(self):
-        # TODO 'Scheduled', 'LIVE'
-        return {'timestamp_human': f'{naturaldelta(utcnow() - self.published)} ago'}
-
-    @fscache.memoize(timeout=1)
-    def _get_dur_human(self): return {'duration_human' :''}
-
-    @property
-    def views_human(self): return intword(self.view_count)
+# TODO
+class ytComment(object):
+    pass
 
 
 # @fscache.memoize(timeout=3)

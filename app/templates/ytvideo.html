@@ -102,14 +102,14 @@
             <p>{{video.description}}</p>
         </div>
     </div>
-
+    {% if comments %}
     <div class="ui comments">
         <h3 class="ui dividing header">Comments</h3>
-        {% for comment in videocomments %}
+        {% for comment in comments %}
                 {% include 'yt_comment.html' %}
         {% endfor %}
     </div>
-
+    {% endif %}
 <script src="{{ url_for('static',filename='video.min.js') }}"></script>
 {% if video.is_live %}
     <script src="{{ url_for('static',filename='videojs-http-streaming.min.js')}}"></script>
