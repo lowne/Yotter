@@ -16,6 +16,9 @@ class AnonymousUser(AnonymousUserMixin):
     yt_playlist_follows = frozenset()
     yt_followed_playlist_ids = frozenset()
     yt_followed_playlists = frozenset()
+    def get_video_watched_progress(self, vid): return 0
+    def set_video_watched_progress(self, vid, progress, duration): return
+    def has_watched_video(self, vid): return False
 
 
 login.anonymous_user = AnonymousUser
