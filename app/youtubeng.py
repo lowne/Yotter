@@ -228,6 +228,7 @@ class ytVideo(ytBase):
             return {
                 'src': prop_mappers['map_stream_url'](fmt['url']),
                 'type': f"video/{fmt['ext']}",
+                'label': f'{fmt["quality"]}P',
                 'quality': fmt['quality'],
                 'height': fmt['height'],
                 'width': fmt['width'],
@@ -237,7 +238,7 @@ class ytVideo(ytBase):
             return {
                 'src': prop_mappers['map_stream_url'](fmt['url']),
                 'type': f"audio/{fmt['ext']}",
-                'quality': f"{fmt['audio_bitrate']}kpbs",
+                'label': f"{fmt['audio_bitrate']}kpbs",
                 'bitrate': fmt['audio_bitrate'],
             }
 
