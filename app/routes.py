@@ -122,8 +122,12 @@ def ytfeed():
     max_days = 365
     # start_time = time.time()
     videos = []
-    for cid in current_user.yt_subscribed_channel_ids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
-    for pid in current_user.yt_followed_playlist_ids: videos.extend(ytPlaylist(pid).get_recent_videos(max_days=max_days))
+    for cid in current_user.yt_subscribed_channel_ids:
+        recents = ytChannel(cid).get_recent_videos(max_days=max_days)
+        videos.extend([video for video in recents if not current_user.has_watched_video(video.id)])
+    for pid in current_user.yt_followed_playlist_ids:
+        recents = ytPlaylist(pid).get_recent_videos(max_days=max_days)
+        videos.extend([video for video in recents if not current_user.has_watched_video(video.id)])
     videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
     return render_template('ytfeed.html', videos=videos[:50], include_channel_header=True)
