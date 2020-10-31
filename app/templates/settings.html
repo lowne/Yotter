@@ -20,7 +20,7 @@
                     <div class="sub header">Save your channel and playlist subscriptions to a JSON file</div>
                 </div>
             </h3>
-            <p>You are <a href="{{url_for('ytsubscriptions')}}">currently subscribed</a> to {{ current_user.yt_followed_channel_ids|length }} channels and {{ current_user.yt_followed_playlist_ids|length }} playlists</p>
+            <p>You are <a href="{{url_for('ytsubscriptions')}}">currently subscribed</a> to {{ current_user.yt_subscribed_channel_ids|length }} channels and {{ current_user.yt_followed_playlist_ids|length }} playlists</p>
             {{ actions.submit(url_for('export_user_data'), label='Export', class='primary', icon='download large') }}
         </div>
         <div class="ui blue segment">

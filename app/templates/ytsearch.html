@@ -44,7 +44,7 @@
 
                             {% if current_user.is_authenticated %}
                                 <div class="right floated content">
-                                {% if not res.channelId in current_user.yt_followed_channel_ids %}
+                                {% if not res.channelId in current_user.yt_subscribed_channel_ids %}
                                     <form action="{{ url_for('ytsubscribe', cid=res.channelId) }}" method="post">
                                         {{ btform.hidden_tag() }}
                                         {{ btform.submit(value='Follow', icon='user plus', class_='ui positive button') }}

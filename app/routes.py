@@ -122,7 +122,7 @@ def ytfeed():
     max_days = 365
     # start_time = time.time()
     videos = []
-    for cid in current_user.yt_followed_channel_ids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
+    for cid in current_user.yt_subscribed_channel_ids: videos.extend(ytChannel(cid).get_recent_videos(max_days=max_days))
     for pid in current_user.yt_followed_playlist_ids: videos.extend(ytPlaylist(pid).get_recent_videos(max_days=max_days))
     videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
@@ -133,7 +133,7 @@ def ytfeed():
 @login_required
 def ytsubscriptions():
     form = EmptyForm()
-    return render_template('ytsubscriptions.html', form=form, channels=current_user.yt_followed_channels, playlists=current_user.yt_followed_playlists)
+    return render_template('ytsubscriptions.html', form=form, channels=current_user.yt_subscribed_channels, playlists=current_user.yt_followed_playlists)
 
 
 # FIXME
@@ -246,8 +246,8 @@ def _playlist_page(request, pid):
 @login_required
 def yt_user_action(what, action, id):
     if what == 'channel':
-        ids = current_user.yt_followed_channel_ids
-        # objs = current_user.yt_followed_channels
+        ids = current_user.yt_subscribed_channel_ids
+        # objs = current_user.yt_subscribed_channels
         obj = ytChannel(id)
         name = obj.name
     elif what == 'playlist':
@@ -437,9 +437,9 @@ def settings():
 @app.route('/settings/export', methods=['POST'])
 @login_required
 def export_user_data():
-    # cids = current_user.yt_followed_channel_ids
+    # cids = current_user.yt_subscribed_channel_ids
     data = {'description': 'Yotter data export', 'username': current_user.username,
-            'followed_channel_ids': list(current_user.yt_followed_channel_ids),
+            'subscribed_channel_ids': list(current_user.yt_subscribed_channel_ids),
             'followed_playlist_ids': list(current_user.yt_followed_playlist_ids)}
     filename = f'yotter_data_export.json'
     try:
@@ -463,11 +463,11 @@ def import_user_data():
     option = request.form['import_format']
     if option == 'yotter':
         data = json.loads(content)
-        for cid in data['followed_channel_ids']: current_user.yt_followed_channel_ids.add(cid)
+        for cid in data['subscribed_channel_ids']: current_user.yt_subscribed_channel_ids.add(cid)
         for pid in data['followed_playlist_ids']: current_user.yt_followed_playlist_ids.add(pid)
     elif option == 'youtube':
         channel_data = re.findall('(UC[a-zA-Z0-9_-]{22})|(?<=user/)[a-zA-Z0-9_-]+', content)
-        for cid in channel_data: current_user.yt_followed_channel_ids.add(cid)
+        for cid in channel_data: current_user.yt_subscribed_channel_ids.add(cid)
         # TODO playlists?
     db.session.commit()
     return redirect(request.referrer)
@@ -476,9 +476,9 @@ def import_user_data():
 @app.route('/settings/delete_subscriptions', methods=['POST'])
 @login_required
 def delete_user_subscriptions():
-    # for cid in list(current_user.yt_followed_channel_ids): current_user.yt_followed_channel_ids.remove(cid)
-    # print(current_user.yt_followed_channel_ids)
-    current_user.yt_followed_channel_ids.clear()
+    # for cid in list(current_user.yt_subscribed_channel_ids): current_user.yt_subscribed_channel_ids.remove(cid)
+    # print(current_user.yt_subscribed_channel_ids)
+    current_user.yt_subscribed_channel_ids.clear()
     current_user.yt_followed_playlist_ids.clear()
     db.session.commit()
     return redirect(request.referrer)
@@ -606,10 +606,10 @@ def purge_db():
     toremove = []
     channels = db.session.query(dbChannel).all()
     for ch in channels:
-        if not ch.is_allowed and not ch.is_blocked and not ch.followers: toremove.append(ch)
+        if not ch.is_allowed and not ch.is_blocked and not ch.user_subscriptions: toremove.append(ch)
     playlists = db.session.query(dbPlaylist).all()
     for pl in playlists:
-        if not pl.is_allowed and not pl.followers: toremove.append(pl)
+        if not pl.is_allowed and not pl.user_follows: toremove.append(pl)
     for o in toremove: db.session.delete(o)
     db.session.commit()
     flash(f'Purged {len(toremove)} entries from the database', 'warning')

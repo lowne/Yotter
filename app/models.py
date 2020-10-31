@@ -6,27 +6,16 @@ from sqlalchemy.ext.associationproxy import association_proxy
 from app.youtubeng import ytVideo, ytChannel, ytPlaylist
 utcnow = datetime.utcnow
 
-user_channel_assoc = db.Table('user_channel_assoc',
-                              db.Column('channel_rowid', db.Integer, db.ForeignKey('yt_channel.rowid')),
-                              db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
-                              )  # Association: CHANNEL --followed by--> [USERS]
-
-
-user_playlist_assoc = db.Table('user_playlist_assoc',
-                               db.Column('playlist_rowid', db.Integer, db.ForeignKey('yt_playlist.rowid')),
-                               db.Column('user_rowid', db.Integer, db.ForeignKey('user.rowid'))
-                               )  # Association: PLAYLIST --followed by--> [USERS]
-
 
 class AnonymousUser(AnonymousUserMixin):
     is_admin = False
     is_restricted = True
-    db_followed_channels = set()
-    yt_followed_channel_ids = set()
-    yt_followed_channels = set()
-    db_followed_playlists = set()
-    yt_followed_playlists = set()
-    yt_followed_playlist_ids = set()
+    yt_channel_subscriptions = frozenset()
+    yt_subscribed_channel_ids = frozenset()
+    yt_subscribed_channels = frozenset()
+    yt_playlist_follows = frozenset()
+    yt_followed_playlist_ids = frozenset()
+    yt_followed_playlists = frozenset()
 
 
 login.anonymous_user = AnonymousUser
@@ -43,18 +32,26 @@ class User(UserMixin, db.Model):
     is_admin = db.Column(db.Boolean, default=False, nullable=True)
     is_restricted = db.Column(db.Boolean, default=False, nullable=True)
 
-    db_followed_channels = db.relationship("dbChannel", collection_class=set, secondary=user_channel_assoc, back_populates="followers", lazy=True)
-    # proxy the 'cid' attribute from the 'yt_followed_channels' relationship
-    yt_followed_channel_ids = association_proxy('db_followed_channels', 'id', creator=lambda id: dbChannel.load(id))
+    yt_channel_subscriptions = db.relationship('dbChannelSubscription', collection_class=set, back_populates='user', lazy=True, cascade="all, delete, delete-orphan")
+    # proxy the 'cid' attribute (which is in turn proxied) from the 'yt_channel_subscriptions' relationship
+    yt_subscribed_channel_ids = association_proxy('yt_channel_subscriptions', 'cid', creator=lambda id: dbChannelSubscription(cid=id), cascade_scalar_deletes=True)
 
     @property
-    def yt_followed_channels(self): return frozenset([ytChannel(id) for id in self.yt_followed_channel_ids])
+    def yt_subscribed_channels(self): return frozenset([ytChannel(id) for id in self.yt_subscribed_channel_ids])
 
-    db_followed_playlists = db.relationship("dbPlaylist", collection_class=set, secondary=user_playlist_assoc, back_populates="followers", lazy=True)
-    yt_followed_playlist_ids = association_proxy('db_followed_playlists', 'id', creator=lambda id: dbPlaylist.load(id))
+    def get_channel_subscription_time(self, cid):
+        for s in self.yt_channel_subscriptions:
+            if s.cid == cid: return s.created_on
+
+    yt_playlist_follows = db.relationship('dbPlaylistFollow', collection_class=set, back_populates='user', lazy=True, cascade="all, delete, delete-orphan")
+    yt_followed_playlist_ids = association_proxy('yt_playlist_follows', 'pid', creator=lambda id: dbPlaylistFollow(pid=id), cascade_scalar_deletes=True)
 
     @property
     def yt_followed_playlists(self): return frozenset([ytPlaylist(id) for id in self.yt_followed_playlist_ids])
+
+    def get_playlist_follow_time(self, pid):
+        for s in self.yt_playlist_follows:
+            if s.pid == pid: return s.created_on
 
     def __repr__(self): return f'<User {self.username}>'
 
@@ -81,6 +78,26 @@ def load_user(uid):
     return user
 
 
+class dbChannelSubscription(db.Model):
+    __tablename__ = 'user_channel_assoc'
+    user_rowid = db.Column(db.Integer, db.ForeignKey('user.rowid'), primary_key=True)
+    channel_rowid = db.Column(db.Integer, db.ForeignKey('yt_channel.rowid'), primary_key=True)
+    created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
+    db_channel = db.relationship('dbChannel', back_populates='user_subscriptions', lazy=True)
+    cid = association_proxy('db_channel', 'id', creator=lambda id: dbChannel.load(id))
+    user = db.relationship('User', back_populates='yt_channel_subscriptions', lazy=True)
+
+
+class dbPlaylistFollow(db.Model):
+    __tablename__ = 'user_playlist_assoc'
+    user_rowid = db.Column(db.Integer, db.ForeignKey('user.rowid'), primary_key=True)
+    playlist_rowid = db.Column(db.Integer, db.ForeignKey('yt_playlist.rowid'), primary_key=True)
+    created_on = db.Column(db.DateTime(), default=utcnow, nullable=False)
+    db_playlist = db.relationship('dbPlaylist', back_populates='user_follows', lazy=True)
+    pid = association_proxy('db_playlist', 'pid', creator=lambda id: dbPlaylist.load(id))
+    user = db.relationship('User', back_populates='yt_playlist_follows', lazy=True)
+
+
 class dbBase(object):
     def __repr__(self): return f"<{self.__class__.__name__} {getattr(self,'id','?')}>"
     rowid = db.Column(db.Integer, primary_key=True)
@@ -98,17 +115,17 @@ class dbChannel(dbBase, db.Model):
     __tablename__ = 'yt_channel'
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
-    followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="db_followed_channels", lazy=True)
-    # follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
+    user_subscriptions = db.relationship('dbChannelSubscription', collection_class=set, back_populates='db_channel', lazy=True)
+    subscribers = association_proxy('user_subscriptions', 'user')
+    # followers = db.relationship('User', collection_class=set, secondary=user_channel_assoc, back_populates="db_followed_channels", lazy=True)
 
 
 class dbPlaylist(dbBase, db.Model):
     __tablename__ = 'yt_playlist'
     is_allowed = db.Column(db.Boolean, default=False, index=True, nullable=True)
     # is_blocked = db.Column(db.Boolean, default=False, index=True, nullable=True)
-    followers = db.relationship('User', collection_class=set, secondary=user_playlist_assoc, back_populates="db_followed_playlists", lazy=True)
-    # follower_usernames = association_proxy('followers', 'username', creator=lambda username: User(username=username))
-
+    user_follows = db.relationship('dbPlaylistFollow', collection_class=set, back_populates='db_playlist', lazy=True)
+    followers = association_proxy('user_follows', 'user')
 
 class dbVideo(dbBase, db.Model):
     __tablename__ = 'yt_video'
