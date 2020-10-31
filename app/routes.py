@@ -20,9 +20,10 @@ from app.youtubeng import prop_mappers, logged
 # FIXME deprecated
 from youtube import search as yts
 
-from bleach import linkify
+from bleach import linkify as markup_linkify
 from bleach.sanitizer import Cleaner
-unlinkify = Cleaner(tags=["abbr", "acronym", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"]).clean
+markup_unlinkify = Cleaner(tags=["abbr", "acronym", "br", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"], strip=True).clean
+markup_clean = Cleaner(tags=["a", "abbr", "acronym", "br", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"], strip=True).clean
 
 utcnow = datetime.utcnow
 
@@ -30,29 +31,49 @@ utcnow = datetime.utcnow
 #         Config         #
 ##########################
 from config import config
+
 if config.behind_https_proxy:
     _url_for = url_for
     def url_for(*a, **kw):
         return _url_for(*a, _scheme='https', _external=True, **kw)
 # current_app.config['PREFERRED_URL_SCHEME']
 
-
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
 
 
 if config.external_proxy:
-    def ext_proxy_mapper(url):
+    def _ext_proxy_mapper(url):
         parsed = urllib.parse.urlparse(url)._asdict()
         parsed['url'] = url
         encoded = {key + '_encoded': urllib.parse.quote_plus(value) for (key, value) in parsed.items()}
         joined = dict(parsed, **encoded)
         return config.external_proxy.format(**joined)
-    if config.proxy_images: prop_mappers['map_image_url'] = lambda url: ext_proxy_mapper(_fix_thumbnail_hq(url))
-    if config.proxy_videos: prop_mappers['map_stream_url'] = ext_proxy_mapper
+    if config.proxy_images: prop_mappers['map_image_url'] = lambda url: _ext_proxy_mapper(_fix_thumbnail_hq(url))
+    if config.proxy_videos: prop_mappers['map_stream_url'] = _ext_proxy_mapper
 else:
     if config.proxy_images: prop_mappers['map_image_url'] = logged(lambda url: url_for('ytimg', url=_fix_thumbnail_hq(url)))
     else: prop_mappers['map_image_url'] = _fix_thumbnail_hq
     if config.proxy_videos: prop_mappers['map_stream_url'] = lambda url: url_for('ytstream', url=url)
+
+
+def _prepare_markup(string):
+    string = string.replace("\n\n", "<br><br>").replace("\n", "<br>")
+    string = markup_linkify(string)
+    # youtube urls to internal
+    string = string.replace("https://youtube.com/", "/")
+    string = string.replace("https://www.youtube.com/", "/")
+    string = string.replace("https://youtu.be/", "/v/")
+    return string
+
+def _markup(string): return Markup(markup_clean(_prepare_markup(string)))
+def _markup_no_links(string): return Markup(markup_unlinkify(_prepare_markup(string)))
+
+
+# plz FIXME - this must break horribly with multiple threads
+def _prepare_markup_mapper():
+    if config.remove_links == True or (config.remove_links == 'restricted' and current_user.is_restricted):
+        prop_mappers['map_markup'] = _markup_no_links
+    else: prop_mappers['map_markup'] = _markup
 
 
 class instance_data:
@@ -210,6 +231,7 @@ def _channel_page(request, ch):
         next_page, prev_page = None, None
         if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
         if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
+        _prepare_markup_mapper()
         return render_template('ytchannel.html', show_admin_actions=True, form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
 
@@ -233,7 +255,6 @@ def _playlist_page(request, pid):
             pl = ytPlaylist('NOTFOUND')._make_error('Playlist not found')
             ch = ytChannel('NOTFOUND')._make_error('Channel not found')
 
-
         form = ChannelForm() # TODO
 
         page = request.args.get('page', 1)
@@ -243,6 +264,7 @@ def _playlist_page(request, pid):
         if page < pl.num_video_pages: next_page = f'{request.path}?page={page + 1}'
         if page > 1: prev_page = f'{request.path}?page={page - 1}'
 
+        _prepare_markup_mapper()
         return render_template('ytplaylist.html', show_admin_actions=True, form=form, playlist=pl, channel=ch, videos=videos, include_channel_header=True, next_page=next_page, prev_page=prev_page)
 
 
@@ -318,19 +340,8 @@ def _video_page(request, video):
     if (config.restricted_mode and (not current_user.is_authenticated or current_user.is_restricted) and not ch.is_allowed) or ch.is_blocked:
         video = ytVideo('NOTFOUND')._make_error('Video not found')
 
-    # Markup description
-    description = Markup(linkify(video.description.replace("\n", "<br>")))
-
-    return render_template('ytvideo.html', video=video, description=description, config=config, comments=[])
-
-
-def markupString(string):
-    string = string.replace("\n\n", "<br><br>").replace("\n", "<br>")
-    string = linkify(string)
-    string = string.replace("https://youtube.com/", "")
-    string = string.replace("https://www.youtube.com/", "")
-    string = string.replace("https://twitter.com/", "/u/")
-    return Markup(string)
+    _prepare_markup_mapper()
+    return render_template('ytvideo.html', video=video, config=config, comments=[])
 
 
 @app.route('/_upd/watched', methods=['POST'])

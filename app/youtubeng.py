@@ -31,6 +31,7 @@ _trim_ago = lambda s: s[:-4] if s.endswith(' ago') else s
 prop_mappers = {
   'map_image_url': _idfn,
   'map_stream_url': _idfn,
+  'map_markup': _idfn,
   'map_trim_ago': _idfn,
 }
 
@@ -189,7 +190,7 @@ class ytVideo(ytBase):
                       'url': ['url'],
                       'NYI': ['is_upcoming']}
 
-    __prop_mappers__ = {'thumbnail': 'map_image_url', 'channel_avatar': 'map_image_url', 'timestamp_human': 'map_trim_ago'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url', 'channel_avatar': 'map_image_url', 'timestamp_human': 'map_trim_ago', 'description': 'map_markup'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'thumbnail': '', 'channel_name': '', 'channel_url': '', 'cid': 'NOTFOUND',
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'duration': '--', 'is_live': False, 'description': 'Invalid video ID',
@@ -381,7 +382,7 @@ class ytChannel(ytBase):
                       'url': ['url'],
                       'NYI': ['playlists']}
 
-    __prop_mappers__ = {'avatar': 'map_image_url'}
+    __prop_mappers__ = {'avatar': 'map_image_url', 'description': 'map_markup'}
 
     __invalid_data__ = {'invalid': True, 'name': '__error__', 'url': '', 'avatar': '', 'sub_count': 0, 'view_count': 0,
                         'joined': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--channel does not exist--', 'links': [],
@@ -498,7 +499,7 @@ class ytPlaylist(ytBase):
                       'ch_avatar': ['channel_avatar'],
                       'feed': ['recent_videos', 'published']}
 
-    __prop_mappers__ = {'thumbnail': 'map_image_url'}
+    __prop_mappers__ = {'thumbnail': 'map_image_url', 'description': 'map_markup'}
 
     __invalid_data__ = {'invalid': True, 'title': '__error__', 'url': '', 'cid': 'NOTFOUND', 'channel_name': '', 'channel_url': '', 'thumbnail': '', 'view_count': 0,
                         'published': datetime.datetime.strptime('1970-01-01', '%Y-%m-%d'), 'description': '--playlist does not exist--',

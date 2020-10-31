@@ -19,6 +19,10 @@ restricted_users:
   - a_restricted_username
   - another_restricted_one
 
+# When true, all links (in descriptions etc.) will be removed. When "restricted", links will be removed for restricted users only.
+remove_links: False
+
+
 # Used by the admin interface to clear inactive users
 max_old_user_days: 60
 
