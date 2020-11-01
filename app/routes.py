@@ -331,25 +331,78 @@ def update_watched():
 @app.route('/stream/<path:url>', methods=['GET', 'POST'])
 @check_login
 def ytstream(url):
-    # This function proxies the video stream from GoogleVideo to the client.
-    headers = Headers()
-    if (url):
-        s = requests.Session()
-        s.verify = True
-        req = s.get(url, stream=True)
-        headers.add('Range', request.headers['Range'])
-        headers.add('Accept-Ranges', 'bytes')
-        # headers.add('Content-Length', str(int(req.headers['Content-Length']) + 1))
-        headers.add('Content-Length', req.headers['Content-Length'])
-        response = Response(req.iter_content(chunk_size=10 * 1024), mimetype=req.headers['Content-Type'],
-                            content_type=req.headers['Content-Type'], direct_passthrough=True, headers=headers)
-        # enable browser file caching with etags
-        response.cache_control.public = True
-        response.cache_control.max_age = int(60000)
-        return response
-    else:
-        flash("Something went wrong loading the video... Try again.")
-        return redir_error(500)
+    s = requests.Session()
+    s.verify = True
+    from_gv = s.get(url, stream=True, headers=Headers({'Range': request.headers['Range']}))
+    resp_headers = Headers({
+        'Content-Range': from_gv.headers.get('Content-Range'),
+        'Content-Length': from_gv.headers.get('Content-Length'),
+        'Accept-Ranges': 'bytes',
+    })
+    response = Response(from_gv.iter_content(chunk_size=10 * 1024), status=from_gv.status_code, mimetype=from_gv.headers['Content-Type'],
+                        content_type=from_gv.headers['Content-Type'], direct_passthrough=True, headers=resp_headers)
+    # enable browser file caching with etags
+    response.cache_control.public = True
+    response.cache_control.max_age = int(60000)
+    return response
+
+
+######################### TEST
+# def copy_h(h,keys):
+#     r=Headers()
+#     for k in keys:
+#         r.add(k, h[k])
+#     return r
+# # @app.route('/stream/<path:url>', methods=['GET', 'HEAD', 'POST'])
+# @check_login
+# def _ytstream(url):
+#     print(request)
+#     print(request.headers)
+
+#     # This function proxies the video stream from GoogleVideo to the client.
+#     headers, gv_headers = Headers(), Headers()
+#     if (url):
+#         s = requests.Session()
+#         s.verify = True
+#         req_range = request.headers['Range']
+#         gv_headers.add('Range', req_range)
+#         gv_headers=copy_h(request.headers,['Range','User-Agent','Accept'])
+#         gvresp=s.get(url, stream=True, headers=gv_headers)
+#         print(gvresp.headers)
+#         # headers.add('Content-Type')
+#         # headers = copy_h(gvresp.headers,['Content-Type','Content-Length','Content-Range'])
+#         print('BUT RET ONLY')
+#         print(headers)
+#         # if True:
+#             # return Response(gvresp.iter_content(), status=gvresp.status_code, headers=headers, direct_passthrough=True)
+
+#         gv_length = gvresp.headers['Content-Length']
+#         gv_range = gvresp.headers.get('Content-Range')
+#         gv_status = gvresp.status_code
+#         print('RESP from GV:::', gvresp)
+#         print(gvresp.headers)
+#         # headers.add('Range', req_range)
+#         # headers.add('Range', request.headers['Range'])
+#         headers.add('Content-Range', gv_range)
+#         # headers.add('Accept-Ranges', 'bytes')
+#         headers.add('Accept-Ranges', f"0-{int(gv_range.split('/')[1])-1}")
+#         # headers.add('Content-Length', str(int(gvresp.headers['Content-Length']) + 1))
+#         headers.add('Content-Length', gv_length)
+
+#         # if gv_range: headers.add('Content-Range', gv_range)
+#         response = Response(gvresp.iter_content(chunk_size=10 * 1024), status=gv_status, mimetype=gvresp.headers['Content-Type'],
+#                             content_type=gvresp.headers['Content-Type'], direct_passthrough=True, headers=headers)
+#         print('-------------------------------')
+#         print(response)
+#         print(response.headers)
+#         # enable browser file caching with etags
+#         # response.cache_control.public = True
+#         # response.cache_control.max_age = int(60000)
+#         return response
+#         # return Response(gvresp)
+#     else:
+#         flash("Something went wrong loading the video... Try again.")
+#         return redir_error(500)
 
 
 def download_file(streamable):
