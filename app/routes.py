@@ -38,7 +38,7 @@ if config.behind_https_proxy:
         return _url_for(*a, _scheme='https', _external=True, **kw)
 # current_app.config['PREFERRED_URL_SCHEME']
 
-def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault')
+def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault').replace('/default', '/mqdefault')
 
 
 if config.external_proxy:
@@ -341,7 +341,9 @@ def _video_page(request, video):
         video = ytVideo('NOTFOUND')._make_error('Video not found')
 
     _prepare_markup_mapper()
-    return render_template('ytvideo.html', video=video, config=config, comments=[])
+    related_videos = []
+    if config.remove_related == False or (config.remove_related == 'restricted' and not current_user.is_restricted): related_videos = video.related_videos
+    return render_template('ytvideo.html', video=video, related_videos=related_videos, include_channel_header=True, comments=[])
 
 
 @app.route('/_upd/watched', methods=['POST'])

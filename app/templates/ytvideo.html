@@ -98,6 +98,7 @@
             </audio>
         </div>
 
+
         <div class="ui raised segment break-word">
             <p>{{video.description}}</p>
         </div>
@@ -110,6 +111,16 @@
         {% endfor %}
     </div>
     {% endif %}
+</div>
+{% if related_videos %}
+<br><br>
+<h3 class="ui centered header">Related videos</h3>
+<div class="ui centered cards">
+    {% for video in related_videos %}
+        {% include 'yt_video_item.html' %}
+    {% endfor %}
+</div>
+{% endif %}
 
 <link href="https://unpkg.com/@silvermine/videojs-quality-selector/dist/css/quality-selector.css" rel="stylesheet">
 <script src="{{ url_for('static',filename='video.min.js') }}"></script>

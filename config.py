@@ -14,6 +14,7 @@ class DEFAULT_CONFIG:
     restricted_mode = False
     restricted_users = []
     remove_links: False
+    remove_related: False
 
     max_old_user_days = 60
 
