@@ -182,7 +182,8 @@ class ytBase(object):
 @propgroups
 class ytVideo(ytBase):
     __propgroups__ = {'oembed': ['title', 'thumbnail', 'channel_name', 'channel_url'], 'ch_id': ['cid'],
-                      'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos', 'av_sources', 'audio_sources', 'caption_sources'],
+                      'page': ['published', 'duration', 'is_live', 'description', 'view_count', 'rating', 'rating_count', 'tags', 'related_videos',
+                               'av_sources', 'audio_sources', 'video_sources', 'caption_sources'],
                       'from_lists': ['badges'],
                       'ts_human': ['timestamp_human'],
                       'dur_human': ['duration_human'],
@@ -248,9 +249,9 @@ class ytVideo(ytBase):
         av_formats = [fmt for fmt in formats if fmt['quality'] and fmt['acodec'] and fmt['vcodec']]
         av_sources = [make_video_source(fmt) for fmt in av_formats]
         av_sources.sort(key=operator.itemgetter('quality'), reverse=True)
-        video_sources = [make_video_source(fmt) for fmt in formats if fmt not in av_formats and fmt['quality'] and fmt['vcodec'] and not fmt['acodec']]
+        video_sources = [make_video_source(fmt) for fmt in formats if fmt not in av_formats and fmt['quality'] and fmt['vcodec'] and not fmt['acodec'] and fmt['ext'] == 'mp4']
         video_sources.sort(key=operator.itemgetter('quality'), reverse=True)
-        audio_sources = [make_audio_source(fmt) for fmt in formats if fmt not in av_formats and fmt['acodec'] and fmt['audio_bitrate'] and not fmt['vcodec']]
+        audio_sources = [make_audio_source(fmt) for fmt in formats if fmt not in av_formats and fmt['acodec'] and fmt['audio_bitrate'] and not fmt['vcodec'] and fmt['ext'] == 'mp4']
         # sort by bitrate
         audio_sources.sort(key=operator.itemgetter('bitrate'), reverse=True)
 
@@ -309,9 +310,16 @@ class ytVideo(ytBase):
             'tags': info['tags'],
             'related_videos': related,
             'av_sources': av_sources,
+            'video_sources': video_sources,
             'audio_sources': audio_sources,
             'caption_sources': caption_sources,
         }
+
+    @property
+    def video_sources_json(self): return json.dumps(self.video_sources)
+
+    @property
+    def audio_sources_json(self): return json.dumps(self.audio_sources)
 
     @fscache.memoize(timeout=1)
     def _get_from_lists(self): return {'badges': []}
