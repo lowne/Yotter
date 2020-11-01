@@ -230,13 +230,12 @@ def _playlist_page(request, pid):
 
         form = ChannelForm() # TODO
 
-        page = request.args.get('page', 1)
+        page = int(request.args.get('page', 1))
+        sort = int(request.args.get('sort', 3))
         videos = pl.get_videos(page=page)
-
         next_page, prev_page = None, None
-        if page < pl.num_video_pages: next_page = f'{request.path}?page={page + 1}'
-        if page > 1: prev_page = f'{request.path}?page={page - 1}'
-
+        if page < pl.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
+        if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
         _prepare_markup_mapper()
         return render_template('ytplaylist.html', title=f'Playlist: {pl.title}', show_admin_actions=True, form=form, playlist=pl, channel=ch, videos=videos,
                                include_channel_header=True, next_page=next_page, prev_page=prev_page)
