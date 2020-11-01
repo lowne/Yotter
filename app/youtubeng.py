@@ -18,7 +18,7 @@ import youtube
 import youtube.playlist
 import youtube.channel
 import youtube.watch
-
+import youtube.search
 
 def utcnow(): return datetime.datetime.now(datetime.timezone.utc)
 
@@ -589,3 +589,67 @@ class ytPlaylist(ytBase):
             if len(videos) >= max_n: break
             videos.append(v)
         return videos
+
+
+def _text_segments_markup(d):
+    s = ''
+    for i in d:
+        if i.get('italics'): s += f"<em>{i['text']}</em>"
+        elif i.get('bold'): s += f"<strong>{i['text']}</strong>"
+        else: s += i['text']
+    return s
+
+
+def _text_segments_string(d):
+    s = ''
+    for i in d: s += i['text']
+    return s
+
+
+def yt_search(query, page=1, sort=0, autocorrect=1):
+    filters = {"time": 0, "type": 0, "duration": 0}
+    polymer = youtube.search.get_search_json(query, page, autocorrect, sort, filters)
+    # with open('samples/yt-local.search.get_search_json.json','w') as f:
+    #   json.dump(polymer, f, indent=2)
+    info = youtube.yt_data_extract.extract_search_info(polymer)
+    # with open('samples/yt-local/.search.extract_search_info-channel.json','w') as f:
+      # json.dump(info, f, indent=2)
+    # raise RuntimeError('ha')
+
+    if info['error']: return {'error': info['error']}
+    videos, channels = [], []
+    for item in info['items']:
+        if item['type'] == 'video':
+            video = ytVideo(item['id'])
+            video.setprop('title', item['title'])
+            video.setprop('description', _text_segments_markup(item['description']))
+            video.setprop('thumbnail', item['thumbnail'])
+            video.setprop('channel_name', item['author'])
+            video.setprop('channel_url', item['author_url'])
+            video.setprop('cid', item['author_id'])
+            video.setprop('timestamp_human', item['time_published'])
+            video._override_ts_human()  # we can never call .timestamp_human again as the video lacks a .published
+            video.setprop('view_count', item['view_count'])
+            video.setprop('duration_human', item['duration'])
+            video._override_dur_human()
+            video.setprop('badges', item['badges'])
+            video._override_from_lists()
+            videos.append(video)
+        elif item['type'] == 'channel':
+            channel = ytChannel(item['id'])
+            channel.setprop('name', item['title'])
+            channel.setprop('description', _text_segments_markup(item['description']))
+            channel.setprop('avatar', item['thumbnail'])
+            channel.setprop('num_videos', item['video_count'])
+            channels.append(channel)
+
+    corrections, suggested_query_string, suggested_query_markup, corrected_query_markup = info['corrections'], None, None, None
+    if corrections['type'] == 'did_you_mean':
+        suggested_query_markup = _text_segments_markup(corrections['corrected_query_text'])
+        suggested_query_string = _text_segments_string(corrections['corrected_query_text'])
+    elif corrections['type'] == 'showing_results_for':
+        corrected_query_markup = _text_segments_markup(corrections['corrected_query_text'])
+
+    return {'num_pages': info['estimated_pages'], 'videos': videos, 'channels': channels,
+            'query_string': query, 'corrected_query_string': corrected_query_markup,
+            'suggested_query_string': suggested_query_string, 'suggested_query_markup': suggested_query_markup}

@@ -34,9 +34,9 @@
                 <a class="item" href="{{ url_for('ytfeed') }}"><i class="bell outline icon"></i>Feed</a>
                 <a class="item" href="{{ url_for('ytsubscriptions') }}"><i class="list icon"></i>Subscriptions</a>
 
-                <form class="item" action="{{url_for('ytsearch') }}" method="POST">
+                <form class="item" action="{{url_for('ytsearch') }}" method="GET">
                     <div class="ui action input">
-                        <input type="text" placeholder="Search...">
+                        <input type="text" name="q" class="prompt" placeholder="Search...">
                         <button type="submit" class="ui icon button">
                             <i class="search link icon"></i>
                         </button>

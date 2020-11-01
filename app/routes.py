@@ -13,29 +13,23 @@ from werkzeug.datastructures import Headers
 from werkzeug.urls import url_parse
 
 from app import app, db, cache, fscache
-from app.forms import LoginForm, RegistrationForm, EmptyForm, SearchForm, ChannelForm
+from app.forms import LoginForm, RegistrationForm, EmptyForm, ChannelForm
 from app.models import User, dbChannel, dbPlaylist, ytChannel, ytPlaylist, ytVideo
-from app.youtubeng import prop_mappers, logged
-
-# FIXME deprecated
-from youtube import search as yts
+from app.youtubeng import prop_mappers, logged, yt_search
 
 from bleach import linkify as markup_linkify
 from bleach.sanitizer import Cleaner
+from config import config
 markup_unlinkify = Cleaner(tags=["abbr", "acronym", "br", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"], strip=True).clean
 markup_clean = Cleaner(tags=["a", "abbr", "acronym", "br", "b", "blockquote", "code", "em", "i", "li", "ol", "strong", "ul"], strip=True).clean
-
 utcnow = datetime.utcnow
 
 ##########################
 #         Config         #
 ##########################
-from config import config
-
 if config.behind_https_proxy:
     _url_for = url_for
-    def url_for(*a, **kw):
-        return _url_for(*a, _scheme='https', _external=True, **kw)
+    def url_for(*a, **kw): return _url_for(*a, _scheme='https', _external=True, **kw)
 # current_app.config['PREFERRED_URL_SCHEME']
 
 def _fix_thumbnail_hq(url): return url.replace('hqdefault', 'mqdefault').replace('/default', '/mqdefault')
@@ -71,7 +65,7 @@ def _markup_no_links(string): return Markup(markup_unlinkify(_prepare_markup(str
 
 # plz FIXME - this must break horribly with multiple threads
 def _prepare_markup_mapper():
-    if config.remove_links == True or (config.remove_links == 'restricted' and current_user.is_restricted):
+    if config.remove_links is True or (config.remove_links == 'restricted' and current_user.is_restricted):
         prop_mappers['map_markup'] = _markup_no_links
     else: prop_mappers['map_markup'] = _markup
 
@@ -165,41 +159,23 @@ def ytsubscriptions():
 @app.route('/search', methods=['GET', 'POST'])
 @check_login
 def ytsearch():
-    form = ChannelForm()
-    button_form = EmptyForm()
+    # form = ChannelForm()
+    # button_form = EmptyForm()
     query = request.args.get('q', None)
-    sort = request.args.get('s', None)
-    if sort != None:
-        sort = int(sort)
-    else:
-        sort = 0
-
-    page = request.args.get('p', None)
-    if page == None:
-        page = 1
+    sort = int(request.args.get('s', 0))
+    page = int(request.args.get('p', 1))
+    autocorrect = int(request.args.get('autocorrect', 1))
 
     if query:
-        autocorrect = 1
-        filters = {"time": 0, "type": 0, "duration": 0}
-        results = yts.search_by_terms(query, page, autocorrect, sort, filters)
-
-        next_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) + 1)
-        if int(page) == 1:
-            prev_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=1)
-        else:
-            prev_page = "/search?q={q}&s={s}&p={p}".format(q=query, s=sort, p=int(page) - 1)
-
-        for video in results['videos']:
-            video['videoThumb'] = proxy_image_url(video['videoThumb'])
-
-        for channel in results['channels']:
-            channel['thumbnail'] = proxy_image_url(channel['thumbnail'])
-
-        return render_template('ytsearch.html', form=form, btform=button_form, results=results,
-                               config=config, npage=next_page,
-                               ppage=prev_page)
+        with db.session.no_autoflush:
+            res = yt_search(query, page, sort, autocorrect)
+            next_page, prev_page = None, None
+            if page < res['num_pages']: next_page = f'{request.path}?s={sort}&p={page + 1}'
+            if page > 1: prev_page = f'{request.path}?s={sort}&p={page - 1}'
+            return render_template('ytsearch.html', results=res, include_channel_header=True,
+                                   next_page=next_page, prev_page=prev_page)
     else:
-        return render_template('ytsearch.html', form=form, results=False)
+        return render_template('ytsearch.html')
 
 
 @app.route('/c/<custom>', methods=['GET'])
@@ -342,7 +318,7 @@ def _video_page(request, video):
 
     _prepare_markup_mapper()
     related_videos = []
-    if config.remove_related == False or (config.remove_related == 'restricted' and not current_user.is_restricted): related_videos = video.related_videos
+    if config.remove_related is False or (config.remove_related == 'restricted' and not current_user.is_restricted): related_videos = video.related_videos
     return render_template('ytvideo.html', video=video, related_videos=related_videos, include_channel_header=True, comments=[])
 
 

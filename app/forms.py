@@ -38,9 +38,6 @@ class LoginForm(FlaskForm):
     remember_me = BooleanField('Remember Me')
     submit = SubmitField('Sign In', render_kw=style)
 
-class SearchForm(FlaskForm):
-    username = StringField('Username')
-    submit = SubmitField('Search')
 
 class ChannelForm(FlaskForm):
     search = StringField('')

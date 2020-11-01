@@ -1,11 +1,18 @@
 {% extends "base.html" %}
+{% import 'yt_actions.html' as actions %}
 
 {% block content %}
-<div class="ui center aligned text container">
-    <form action="{{url_for('ytsearch', _method='GET')}}">
-    <div class="ui search">
-            <input class="prompt" name="q" type="text" placeholder="Search...">
-            <select name="s" id="sort">
+<div class="ui text container">
+    <form class="item" action="{{url_for('ytsearch') }}" method="GET">
+        <div class="ui action input">
+            <input type="text" name="q" class="prompt" placeholder="Search..." value="{{results.query_string}}">
+            <button type="submit" class="ui icon button">
+                <i class="search link icon"></i>
+            </button>
+        </div>
+        <div class="ui input">
+            <select class="ui inline tiny dropdown" name="s">
+                <!--<option value="">Sort by</option>-->
                 <option value="0">Relevance</option>
                 <option value="3">Views</option>
                 <option value="2">Date</option>
@@ -14,80 +21,59 @@
         </div>
     </form>
 </div>
-<div class="ui text container"></div>
-    {% if results %}
-    {% if results.channels %}
-        <h3 class="ui dividing header">Users</h3>
+
+{% if results %}
+<div class="ui text container">
+    <br><br>
+    <p>Showing results for <big>{{(results.corrected_query_string or results.query_string)|safe}}</big></p>
+
+    {% if results.corrected_query_string %}
+    <h5 class="ui header">
+        Search for
+        <a href="{{url_for('ytsearch', q=results.query_string, autocorrect=0, _method='GET')}}">
+          {{ results.query_string }}
+        </a>
+        instead
+    </h5>
     {% endif %}
-    <div class="ui relaxed divided list">
-            {% for res in results.channels %}
-                    <div class="item">
-                        <div class="image">
-                            <img src="{{res.thumbnail}}" alt="Avatar">
-                        </div>
-                        <div class="content">
-                          <a class = "header" href="{{ url_for('ytchannel', cid=res.channelId)}}">{{res.username}}</a>
-                          <div class="meta">
-                            <span>{{res.description}}</span>
-                          </div>
-                          <div class="description">
-                            <p></p>
-                          </div>
-                          <div class="extra">
-                            <div class="ui label">
-                                <i class="user icon"></i> {{res.suscribers}}
-                            </div>
 
-                            <div class="ui label">
-                                <i class="video icon"></i> {{res.videos}}
-                            </div>
+    {% if results.suggested_query_string %}
+    <h5 class="ui header">
+        Did you mean
+        <a href="{{url_for('ytsearch', q=results.suggested_query_string, _method='GET')}}">
+          {{ results.suggested_query_markup }}
+        </a>
+        ?
+    </h5>
+    {% endif %}
 
-                            {% if current_user.is_authenticated %}
-                                <div class="right floated content">
-                                {% if not res.channelId in current_user.yt_subscribed_channel_ids %}
-                                    <form action="{{ url_for('ytsubscribe', cid=res.channelId) }}" method="post">
-                                        {{ btform.hidden_tag() }}
-                                        {{ btform.submit(value='Follow', icon='user plus', class_='ui positive button') }}
-                                    </form>
-                                {% else %}
-                                    <form action="{{ url_for('ytunsubscribe', cid=res.channelId) }}" method="post">
-                                        {{ btform.hidden_tag() }}
-                                        {{ btform.submit(value='Unfollow', icon='user times', class_='ui negative button') }}
-                                    </form>
-                                {% endif %}
-                                </div>
-                            {% endif %}
-                          </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-
-            <div class="ui middle aligned divided list">
-                {% if results.videos %}
-                <h3 class="ui dividing header">Videos</h3>
-                    <div class="ui centered cards">
-                        {% for video in results.videos %}
-                            {% include 'yt_videoitem.html' %}
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
-
-    {%if ppage%}
-    <div class="ui text container center aligned">
-       <a href="{{ppage}}"><button class="ui labeled icon button">
-            <i class="left arrow icon"></i>
-            Prev
-        </button></a>
-        <a href="{{npage}}"><button class="ui right labeled icon button">
-            <i class="right arrow icon"></i>
-            Next
-        </button></a>
+    {% if results.channels %}
+    <h3 class="ui dividing header">Channels</h3>
+    <div class="ui cards">
+        {% for channel in results.channels %}
+            {% include 'yt_channel_item.html' %}
+        {% endfor %}
     </div>
-    {%endif%}
+    {% endif %}
+
+    {% if results.videos %}
+    <h3 class="ui dividing header">Videos</h3>
+    <div class="ui cards">
+        {% for video in results.videos %}
+            {% include 'yt_video_item.html' %}
+        {% endfor %}
+    </div>
+    {% endif %}
+    <br><br>
+    <div class="ui center aligned text container">
+        {% if prev_page %}
+        <a href="{{prev_page}}"> <button class="ui left attached button"><i class="angle red left icon"></i></button> </a>
+        {% endif %}
+        {% if next_page %}
+        <a href="{{next_page}}"> <button class="right attached ui button"><i class="angle red right icon"></i></button></a>
+        {% endif %}
+    </div>
 </div>
+{% endif %}
 
 {% endblock %}
