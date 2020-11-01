@@ -117,9 +117,9 @@ def admin_required(f):
 def index():
     print('INDEX')
     if current_user.is_admin: return redirect(url_for('manage_admin_lists'))
-    if current_user.is_authenticated: return redirect(url_for('ytfeed'))
-    if config.require_login: return app.login_manager.unauthorized()
+    if current_user.is_authenticated: return redirect(url_for('ytgallery')) if current_user.is_restricted else redirect(url_for('ytfeed'))
     if config.restricted_mode: return redirect(url_for('ytgallery'))
+    if config.require_login: return redirect(url_for('login'))
     return redirect(url_for('ytsearch'))
 
 
