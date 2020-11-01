@@ -42,7 +42,7 @@
             poster="{{video.thumbnail}}"
             preload="none">
             {% for source in video.av_sources %}
-                    <source src="{{source.src}}" type="{{source.type}}" label="{{source.label}}">
+                    <source src="{{source.src}}" type="{{source.type}}" label="{{source.label}}" kind="main">
             {% endfor %}
             {% for caption in video.caption_sources %}
                     <track kind="captions" src="{{caption.src}}" srclang="{{caption.srclang}}" label="{{caption.label}}">
@@ -124,19 +124,26 @@
 {% endif %}
 
 <script type="text/javascript">
-  var vjs = videojs('vjsplayer');
-  vjs.controlBar.addChild('QualitySelector');
-//  vjs.ready(function(){
-//      console.log('player ready!');
-//    });
-
+  var player = videojs('vjsplayer');
+  player.controlBar.addChild('QualitySelector');
+  // player.ready(function(){
+  //   console.log('player ready!');
+  // });
   update_watched = function() {
-    if (vjs.duration()) {
-      $.post("{{ url_for('update_watched') }}", {
-        vid: "{{ video.id }}",
-        progress: Math.floor(vjs.currentTime()),
-        duration: Math.floor(vjs.duration())
-      })
+    if (player.duration()) {
+      fetch("{{url_for('update_watched')}}",
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            vid: "{{ video.id }}",
+            progress: Math.floor(player.currentTime()),
+            duration: Math.floor(player.duration())
+          }),
+        }
+      )
     }
   }
   window.addEventListener('beforeunload',update_watched);

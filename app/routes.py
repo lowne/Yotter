@@ -346,7 +346,7 @@ def _video_page(request, video):
 
 @app.route('/_upd/watched', methods=['POST'])
 def update_watched():
-    data = dict(request.form)
+    data = json.loads(request.data)
     current_user.set_video_watched_progress(data['vid'], data['progress'], data['duration'])
     return 'OK'
 
