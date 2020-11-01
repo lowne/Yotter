@@ -128,7 +128,7 @@ def ytgallery():
     print('GALLERY')
     channels = get_admin_list(ytChannel, is_allowed=True)
     playlists = get_admin_list(ytPlaylist, is_allowed=True)
-    return render_template('ytgallery.html', channels=channels, playlists=playlists)
+    return render_template('ytgallery.html', title='Gallery', channels=channels, playlists=playlists)
 
 
 @app.route('/feed', methods=['GET', 'POST'])
@@ -145,7 +145,7 @@ def ytfeed():
         videos.extend([video for video in recents if not current_user.has_watched_video(video.id)])
     videos.sort(key=attrgetter('published'), reverse=True)
     # print("--- {} seconds fetching youtube feed---".format(time.time() - start_time))
-    return render_template('ytfeed.html', videos=videos[:50], include_channel_header=True)
+    return render_template('ytfeed.html', title='Feed', videos=videos[:50], include_channel_header=True)
 
 
 @app.route('/subscriptions', methods=['GET', 'POST'])
@@ -166,16 +166,13 @@ def ytsearch():
     page = int(request.args.get('p', 1))
     autocorrect = int(request.args.get('autocorrect', 1))
 
+    results, next_page, prev_page = None, None, None
     if query:
         with db.session.no_autoflush:
-            res = yt_search(query, page, sort, autocorrect)
-            next_page, prev_page = None, None
-            if page < res['num_pages']: next_page = f'{request.path}?s={sort}&p={page + 1}'
+            results = yt_search(query, page, sort, autocorrect)
+            if page < results['num_pages']: next_page = f'{request.path}?s={sort}&p={page + 1}'
             if page > 1: prev_page = f'{request.path}?s={sort}&p={page - 1}'
-            return render_template('ytsearch.html', results=res, include_channel_header=True,
-                                   next_page=next_page, prev_page=prev_page)
-    else:
-        return render_template('ytsearch.html')
+    return render_template('ytsearch.html', title='Search', results=results, include_channel_header=True, next_page=next_page, prev_page=prev_page)
 
 
 @app.route('/c/<custom>', methods=['GET'])
@@ -208,7 +205,7 @@ def _channel_page(request, ch):
         if page < ch.num_video_pages: next_page = f'{request.path}?sort={sort}&page={page + 1}'
         if page > 1: prev_page = f'{request.path}?sort={sort}&page={page - 1}'
         _prepare_markup_mapper()
-        return render_template('ytchannel.html', show_admin_actions=True, form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
+        return render_template('ytchannel.html', title=f'Channel: {ch.name}', show_admin_actions=True, form=form, channel=ch, videos=videos, next_page=next_page, prev_page=prev_page)
 
 
 @app.route('/playlist/<pid>', methods=['GET'])
@@ -241,7 +238,8 @@ def _playlist_page(request, pid):
         if page > 1: prev_page = f'{request.path}?page={page - 1}'
 
         _prepare_markup_mapper()
-        return render_template('ytplaylist.html', show_admin_actions=True, form=form, playlist=pl, channel=ch, videos=videos, include_channel_header=True, next_page=next_page, prev_page=prev_page)
+        return render_template('ytplaylist.html', title=f'Playlist: {pl.title}', show_admin_actions=True, form=form, playlist=pl, channel=ch, videos=videos,
+                               include_channel_header=True, next_page=next_page, prev_page=prev_page)
 
 
 @app.route('/_user/<what>/<action>/<id>', methods=['POST'])
@@ -319,7 +317,7 @@ def _video_page(request, video):
     _prepare_markup_mapper()
     related_videos = []
     if config.remove_related is False or (config.remove_related == 'restricted' and not current_user.is_restricted): related_videos = video.related_videos
-    return render_template('ytvideo.html', video=video, related_videos=related_videos, include_channel_header=True, comments=[])
+    return render_template('ytvideo.html', title=f'Video: {video.title}', video=video, related_videos=related_videos, include_channel_header=True, comments=[])
 
 
 @app.route('/_upd/watched', methods=['POST'])
@@ -509,7 +507,7 @@ def manage_admin_lists():
     blocked_channels = get_admin_list(ytChannel, is_blocked=True)
     allowed_channels = get_admin_list(ytChannel, is_allowed=True)
     allowed_playlists = get_admin_list(ytPlaylist, is_allowed=True)
-    return render_template('ytadmin.html', show_admin_actions=True, blocked_channels=blocked_channels, allowed_channels=allowed_channels, allowed_playlists=allowed_playlists)
+    return render_template('ytadmin.html', title='Admin', show_admin_actions=True, blocked_channels=blocked_channels, allowed_channels=allowed_channels, allowed_playlists=allowed_playlists)
 
 @app.route('/_admin/<what>/<where>/<action>/<id>', methods=['POST'])
 @admin_required
