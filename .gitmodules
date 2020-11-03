@@ -1,3 +1,4 @@
 [submodule "youtube-local"]
 	path = youtube-local
 	url = https://github.com/user234683/youtube-local
+	shallow = true
