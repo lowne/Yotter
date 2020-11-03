@@ -1,19 +1,24 @@
+ARG YT_BUILD=prod
+ARG YT_UID=1000
+ARG YT_GID=1000
+
 FROM python:alpine AS base
 
 ################################################### get app
-FROM base AS stage
+FROM base AS prod
 RUN apk --no-cache add git
 RUN git clone --depth=1 --shallow-submodules https://github.com/lowne/yotter \
  && cd yotter \
  && git submodule update --init --depth 1
+FROM base AS local
+COPY . /yotter
+
+FROM ${YT_BUILD} as stage
 
 FROM base AS app
-ARG YT_USER=yotter
-ARG YT_UID=1000
-ARG YT_GID=1000
 
 RUN addgroup -g ${YT_GID} yotter \
- && adduser -h /yotter -G yotter -D -u ${YT_UID} ${YT_USER}
+ && adduser -h /yotter -G yotter -D -u ${YT_UID} yotter
 COPY --from=stage --chown=${YT_UID}:${YT_GID} /yotter /yotter
 
 ################################################### get requirements
@@ -39,12 +44,14 @@ ENV YOTTER_TEMP_DIR=/tmp
 ENV YOTTER_CACHE_DIR=/tmp/yotter-cache
 
 WORKDIR /yotter
-ARG YT_UID=1000
-ARG YT_GID=1000
 USER ${YT_UID}:${YT_GID}
 
 CMD cd /yotter \
  && flask db upgrade \
  && gunicorn -b 0.0.0.0:5000 -w 4 yotter:app
+
+#CMD cd /yotter \
+# && flask db upgrade \
+# && flask run -h 0.0.0.0 -p 5000 --with-threads
 
 EXPOSE 5000
